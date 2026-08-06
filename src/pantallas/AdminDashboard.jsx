@@ -5,6 +5,8 @@ import { obtenerSocket, unirseAInventario, unirseAdmin } from '../socket.js';
 import { IconoDescargar, IconoTienda, IconoEliminar, IconoCompartir } from '../componentes/Iconos.jsx';
 import { derivarAlias, aliasDisponible } from '../utilidades/alias.js';
 import { formatearFecha } from '../utilidades/fecha.js';
+import { PantallaTaxes } from './PantallaTaxes.jsx';
+import { PantallaCaptura } from './PantallaCaptura.jsx';
 
 export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const mostrarToast = useToast();
@@ -35,6 +37,10 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const [perfiles, setPerfiles] = useState([]);
   const [nombreNuevoPerfil, setNombreNuevoPerfil] = useState('');
   const [clavesGeneradas, setClavesGeneradas] = useState([]);
+
+  // --- Modo captura del admin (agregar artículos con su propio tax) ---
+  const [adminParticipante, setAdminParticipante] = useState(null);
+  const [adminTax, setAdminTax] = useState(null);
 
   const [emailNuevoAdmin, setEmailNuevoAdmin] = useState('');
   const [nombreNuevoAdmin, setNombreNuevoAdmin] = useState('');
@@ -138,6 +144,13 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
       if (inputProductosRef.current) inputProductosRef.current.value = '';
     }
   }
+
+  // Si se cambia de inventario (o se sale de "gestionar") no hay que
+  // arrastrar el modo captura del admin del inventario anterior.
+  useEffect(() => {
+    setAdminParticipante(null);
+    setAdminTax(null);
+  }, [inventario?.id]);
 
   useEffect(() => {
     if (!inventario) return undefined;
@@ -334,6 +347,22 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     }
   }
 
+  // El admin agrega artículos como si fuera un capturador más, con su
+  // propio tax (o los que necesite) — reusa el mismo perfil siempre
+  // (alias fijo por admin, no uno de los de "Personal de captura") así
+  // vuelve a encontrar lo que ya había cargado si entra de nuevo.
+  async function iniciarCapturaAdmin() {
+    try {
+      const alias = `admin-${admin.id}`;
+      const nombre = `${admin.nombre || admin.email} (admin)`;
+      const r = await api.crearPerfilComoAdmin(inventario.id, admin.id, alias, nombre);
+      setAdminParticipante(r);
+      cargarPerfiles(inventario.id);
+    } catch {
+      mostrarToast('No se pudo iniciar la captura', 'error');
+    }
+  }
+
   async function reabrirTax(taxId) {
     try {
       await api.reabrirTax(taxId, { adminId: admin.id });
@@ -495,6 +524,30 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
       )}
     </div>
   );
+
+  // Modo captura del admin: pantalla completa reusando tal cual las mismas
+  // PantallaTaxes/PantallaCaptura del capturador (mismo look, mismo
+  // escáner, misma cola offline) en vez de reimplementar todo — el admin
+  // "sale" con el mismo botón "Salir"/"‹ Inicio" de siempre, que acá vuelve
+  // a la gestión del inventario en vez de cerrar sesión.
+  if (adminParticipante) {
+    return adminTax ? (
+      <PantallaCaptura
+        acceso={{ tienda, inventario }}
+        participante={adminParticipante}
+        tax={adminTax}
+        onCambiarTax={setAdminTax}
+        onVolver={() => setAdminTax(null)}
+      />
+    ) : (
+      <PantallaTaxes
+        acceso={{ tienda, inventario }}
+        participante={adminParticipante}
+        onAbrirTax={setAdminTax}
+        onSalir={() => { setAdminParticipante(null); setAdminTax(null); }}
+      />
+    );
+  }
 
   return (
     <div className="pantalla" style={{ alignItems: 'stretch' }}>
@@ -777,6 +830,9 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                   <a className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8, textDecoration: 'none' }} href={api.urlExportarInventario(inventario.id)}>
                     <IconoDescargar tamano={16} /> Exportar .txt
                   </a>
+                  <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={iniciarCapturaAdmin}>
+                    + Agregar artículos
+                  </button>
                   {inventario.estado === 'abierto' ? (
                     <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={cerrarInventario}>Cerrar inventario</button>
                   ) : (
