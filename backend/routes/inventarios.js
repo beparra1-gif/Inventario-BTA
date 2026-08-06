@@ -123,6 +123,19 @@ router.get('/abierto/:edp', manejarAsync(async (req, res) => {
   res.json(sinClaveHash(resultado.rows[0]));
 }));
 
+// Participante: revalida el inventario puntual al que ya estaba conectado
+// (cualquier estado, no solo abierto) — así, si el admin lo cierra, la app
+// no lo saca de una a la pantalla de elegir tienda: se queda viendo lo que
+// ya tenía, en modo solo lectura, hasta que el admin lo reabra.
+router.get('/:id', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'id_invalido' });
+
+  const resultado = await pool.query('SELECT * FROM inventarios WHERE id = $1', [id]);
+  if (!resultado.rows.length) return res.status(404).json({ error: 'inventario_no_encontrado' });
+  res.json(sinClaveHash(resultado.rows[0]));
+}));
+
 // Perfiles de captura ya creados para este inventario (por el admin de
 // antemano o por participantes que ya entraron) — se usa tanto para que un
 // participante elija/reconecte su perfil como para el roster del admin. Con

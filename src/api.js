@@ -63,6 +63,7 @@ export const api = {
   buscarInventarios: (q, adminId) => solicitar(`/api/inventarios?adminId=${adminId}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
   inventariosRecientes: (adminId, limite = 2) => solicitar(`/api/inventarios/recientes?adminId=${adminId}&limite=${limite}`),
   inventarioAbiertoPorEdp: (edp) => solicitar(`/api/inventarios/abierto/${edp}`),
+  obtenerInventario: (id) => solicitar(`/api/inventarios/${id}`),
   cerrarInventario: (id) => post(`/api/inventarios/${id}/cerrar`, {}),
   reabrirInventario: (id, adminId) => post(`/api/inventarios/${id}/reabrir`, { adminId }),
   eliminarInventario: (id, adminId) => solicitar(`/api/inventarios/${id}?adminId=${adminId}`, { method: 'DELETE' }),

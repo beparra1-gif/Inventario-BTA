@@ -41,6 +41,11 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
   const [enLinea, setEnLinea] = useState(navigator.onLine);
 
   const taxCerrado = tax.estado === 'cerrado';
+  // El admin puede cerrar el inventario completo sin que eso cierre los tax
+  // individuales (no cascadea) — igual hay que bloquear toda edición acá,
+  // no solo cuando el propio tax está cerrado, y dejarlo en modo visualizador.
+  const inventarioCerrado = acceso.inventario.estado !== 'abierto';
+  const soloLectura = taxCerrado || inventarioCerrado;
 
   useEffect(() => {
     const alConectar = () => setEnLinea(true);
@@ -148,7 +153,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
       }
       agregarPorEscaneo(resultado.codigoProducto, resultado.tallaCruda, codigoBarras);
     },
-    { activo: !taxCerrado && !mostrarManual }
+    { activo: !soloLectura && !mostrarManual }
   );
 
   // Manual: acá sí se corrobora antes de guardar (por eso trae foto) —
@@ -257,6 +262,13 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
           </div>
         )}
 
+        {inventarioCerrado && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: 'var(--texto-tenue)' }}>
+            <IconoAlerta tamano={16} />
+            El admin cerró este inventario — podés ver lo capturado pero no modificarlo hasta que lo reabra.
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div>
@@ -270,7 +282,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
               </div>
             </div>
           </div>
-          {!taxCerrado && (
+          {!soloLectura && (
             <div style={{ display: 'flex', gap: 6 }}>
               {totalUnidades > 0 && (
                 <button className="btn btn-secundario btn-chico" onClick={reiniciarTax} title="Borra todo y empieza de cero">
@@ -291,7 +303,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
           <p style={{ textAlign: 'center', color: 'var(--texto-tenue)' }}>Cargando...</p>
         ) : agrupado.length === 0 ? (
           <p style={{ textAlign: 'center', color: 'var(--texto-tenue)' }}>
-            {taxCerrado ? 'Este tax no tiene artículos.' : 'Escanea o ingresa un artículo para empezar.'}
+            {soloLectura ? 'Este tax no tiene artículos.' : 'Escanea o ingresa un artículo para empezar.'}
           </p>
         ) : (
           <div className="lista-capturas">
@@ -311,7 +323,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
                     <span className="item-captura-sku">SKU: {etiquetaTalla(item)}</span>
                     <span className="item-captura-cant">
                       cant:{' '}
-                      {!taxCerrado && !pendiente && seEstaEditando ? (
+                      {!soloLectura && !pendiente && seEstaEditando ? (
                         <input
                           className="campo"
                           style={{ width: 48, textAlign: 'center', padding: 4, marginBottom: 0, display: 'inline-block' }}
@@ -325,15 +337,15 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
                         />
                       ) : (
                         <strong
-                          style={{ cursor: taxCerrado || pendiente ? 'default' : 'pointer' }}
+                          style={{ cursor: soloLectura || pendiente ? 'default' : 'pointer' }}
                           title={pendiente ? undefined : 'Tocar para editar la cantidad'}
-                          onClick={() => !taxCerrado && !pendiente && empezarEdicion(item)}
+                          onClick={() => !soloLectura && !pendiente && empezarEdicion(item)}
                         >
                           {item.cantidad}
                         </strong>
                       )}
                     </span>
-                    {!taxCerrado && !pendiente && (
+                    {!soloLectura && !pendiente && (
                       <button
                         onClick={() => eliminarGrupo(item)}
                         title="Eliminar"
@@ -353,7 +365,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
         )}
       </div>
 
-      {!taxCerrado && (
+      {!soloLectura && (
         <button className="boton-flotante" onClick={() => setMostrarManual(true)} title="Ingresar código manualmente">
           <IconoEscanear />
         </button>

@@ -97,6 +97,10 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
 
   const taxesCerrados = resumen?.taxes.filter((t) => t.estado === 'cerrado').length ?? 0;
 
+  // El admin cerró el inventario completo: se puede seguir viendo todo
+  // (totales, detalle por tax), pero no modificar nada hasta que lo reabra.
+  const inventarioCerrado = acceso.inventario.estado !== 'abierto';
+
   return (
     <div className="pantalla">
       <EncabezadoInventario tienda={acceso.tienda} inventario={acceso.inventario} />
@@ -131,6 +135,13 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
                 </div>
               )}
 
+              {inventarioCerrado && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: 'var(--texto-tenue)' }}>
+                  <IconoAlerta tamano={16} />
+                  El admin cerró este inventario — podés ver lo capturado pero no modificarlo hasta que lo reabra.
+                </div>
+              )}
+
               {resumen?.filasNoReconocidas > 0 && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#FEF9C3', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: '#92400E' }}>
                   <IconoAlerta tamano={16} />
@@ -153,8 +164,10 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
                         </div>
                         {t.estado === 'abierto' ? (
                           <button className="btn-texto" style={{ padding: 0, flexShrink: 0 }} onClick={() => onAbrirTax({ id: t.tax_id, numero_tax: t.numero_tax, estado: t.estado })}>
-                            Continuar
+                            {inventarioCerrado ? 'Ver' : 'Continuar'}
                           </button>
+                        ) : inventarioCerrado ? (
+                          <span style={{ fontSize: 11, color: 'var(--texto-suave)', textTransform: 'uppercase', fontWeight: 700, flexShrink: 0 }}>Cerrado</span>
                         ) : (
                           <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
                             <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => modificar(t)}>Modificar</button>
@@ -175,15 +188,19 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
                 </div>
               )}
 
-              <button className="btn btn-primario" onClick={() => abrir(numeroElegido)}>
-                Empezar tax {numeroElegido}
-              </button>
+              {!inventarioCerrado && (
+                <>
+                  <button className="btn btn-primario" onClick={() => abrir(numeroElegido)}>
+                    Empezar tax {numeroElegido}
+                  </button>
 
-              <button className="btn-texto" style={{ display: 'block', margin: '12px auto 0' }} onClick={() => setMostrarElegirNumero((v) => !v)}>
-                {mostrarElegirNumero ? 'Ocultar' : 'Elegir otro número de tax'}
-              </button>
+                  <button className="btn-texto" style={{ display: 'block', margin: '12px auto 0' }} onClick={() => setMostrarElegirNumero((v) => !v)}>
+                    {mostrarElegirNumero ? 'Ocultar' : 'Elegir otro número de tax'}
+                  </button>
+                </>
+              )}
 
-              {mostrarElegirNumero && (
+              {!inventarioCerrado && mostrarElegirNumero && (
                 <div style={{ marginTop: 12 }}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                     {rango.map((n) => {

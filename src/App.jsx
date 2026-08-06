@@ -18,21 +18,21 @@ function FlujoCaptura({ onIrAdmin }) {
   const [verificando, setVerificando] = useState(true);
 
   // La sesión queda guardada hasta 24h (ver useEstadoPersistente), pero el
-  // inventario que quedó cacheado puede haber cambiado mientras tanto: el
-  // admin lo cerró y abrió uno nuevo para la misma tienda, o simplemente ya
-  // no queda ninguno abierto. Sin esto, el capturador queda "atrapado"
-  // viendo/usando un inventario viejo y todo le falla con un error confuso.
+  // estado del inventario cacheado puede haber cambiado mientras tanto — el
+  // admin lo cerró, o lo volvió a abrir. Se revalida por id (no por "hay
+  // algo abierto en esta tienda") para que si lo cierran el capturador NO
+  // quede afuera: se queda viendo lo que ya tenía, en modo solo lectura
+  // (ver PantallaTaxes/PantallaCaptura), hasta que el admin lo reabra. Solo
+  // se vuelve a pedir la tienda si el inventario ya no existe (lo borraron).
   useEffect(() => {
     if (!acceso) { setVerificando(false); return; }
     let cancelado = false;
     (async () => {
       try {
-        const inventarioVigente = await api.inventarioAbiertoPorEdp(acceso.tienda.edp);
+        const inventarioVigente = await api.obtenerInventario(acceso.inventario.id);
         if (cancelado) return;
-        if (inventarioVigente.id !== acceso.inventario.id) {
+        if (inventarioVigente.estado !== acceso.inventario.estado) {
           setAcceso({ ...acceso, inventario: inventarioVigente });
-          setParticipante(null);
-          setTax(null);
         }
       } catch {
         if (cancelado) return;
