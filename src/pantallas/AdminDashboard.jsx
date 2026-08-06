@@ -336,6 +336,17 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     }
   }
 
+  async function reiniciarTaxDesdeAdmin(taxId, unidades) {
+    if (!window.confirm(`Esto borra las ${unidades} unidades de ese tax y lo deja abierto de nuevo para rehacerlo. ¿Seguro?`)) return;
+    try {
+      await api.reiniciarTax(taxId);
+      cargarResumen(inventario.id);
+      mostrarToast('Tax reiniciado', 'ok');
+    } catch {
+      mostrarToast('No se pudo reiniciar el tax', 'error');
+    }
+  }
+
   async function borrarInventario(inv) {
     if (
       !window.confirm(
@@ -832,10 +843,18 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                                 <td>{p.tax_estado ?? '—'}</td>
                                 <td>{p.unidades}</td>
                                 <td>
-                                  {p.tax_id && (
+                                  {/* Mientras el inventario esté cerrado no se puede tocar nada de un
+                                      tax puntual — hay que reabrirlo completo ("Reabrir para corregir
+                                      algo") para que estas acciones vuelvan a aparecer. */}
+                                  {p.tax_id && inventario.estado === 'abierto' && (
                                     <div style={{ display: 'flex', gap: 6 }}>
                                       {p.tax_estado === 'cerrado' && (
-                                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => reabrirTax(p.tax_id)}>Reabrir</button>
+                                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => reabrirTax(p.tax_id)}>Modificar</button>
+                                      )}
+                                      {p.unidades > 0 && (
+                                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => reiniciarTaxDesdeAdmin(p.tax_id, p.unidades)}>
+                                          Rehacer
+                                        </button>
                                       )}
                                       <button className="btn-texto" style={{ padding: 0, fontSize: 12, color: '#B91C1C' }} onClick={() => borrarTax(p.tax_id)}>Borrar</button>
                                     </div>
