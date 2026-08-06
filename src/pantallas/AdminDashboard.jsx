@@ -49,6 +49,8 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const [guardandoPerfil, setGuardandoPerfil] = useState(false);
   const [passwordActualPerfil, setPasswordActualPerfil] = useState('');
   const [passwordNuevaPerfil, setPasswordNuevaPerfil] = useState('');
+  const [passwordNuevaRepetirPerfil, setPasswordNuevaRepetirPerfil] = useState('');
+  const [mostrarClavesPerfil, setMostrarClavesPerfil] = useState(false);
   const [cambiandoPasswordPerfil, setCambiandoPasswordPerfil] = useState(false);
 
   const [subiendoTiendas, setSubiendoTiendas] = useState(false);
@@ -385,11 +387,16 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
 
   async function cambiarPasswordPerfil() {
     if (!passwordActualPerfil || passwordNuevaPerfil.length < 8) return;
+    if (passwordNuevaPerfil !== passwordNuevaRepetirPerfil) {
+      mostrarToast('La clave nueva no coincide en los dos campos', 'error');
+      return;
+    }
     setCambiandoPasswordPerfil(true);
     try {
       await api.cambiarPassword(admin.id, passwordActualPerfil, passwordNuevaPerfil);
       setPasswordActualPerfil('');
       setPasswordNuevaPerfil('');
+      setPasswordNuevaRepetirPerfil('');
       mostrarToast('Clave actualizada', 'ok');
     } catch {
       mostrarToast('Clave actual incorrecta', 'error');
@@ -563,27 +570,48 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                 </div>
 
                 <div style={{ marginTop: 20, borderTop: '1px solid var(--borde)', paddingTop: 16 }}>
-                  <label className="etiqueta">Cambiar clave de acceso</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label className="etiqueta" style={{ margin: 0 }}>Cambiar clave de acceso</label>
+                    <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => setMostrarClavesPerfil((v) => !v)}>
+                      {mostrarClavesPerfil ? 'Ocultar claves' : 'Mostrar claves'}
+                    </button>
+                  </div>
                   <input
                     className="campo"
-                    type="password"
+                    type={mostrarClavesPerfil ? 'text' : 'password'}
                     placeholder="Clave actual"
                     value={passwordActualPerfil}
                     onChange={(e) => setPasswordActualPerfil(e.target.value)}
                   />
                   <input
                     className="campo"
-                    type="password"
+                    type={mostrarClavesPerfil ? 'text' : 'password'}
                     placeholder="Clave nueva (mínimo 8 caracteres)"
                     value={passwordNuevaPerfil}
                     onChange={(e) => setPasswordNuevaPerfil(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && cambiarPasswordPerfil()}
                   />
+                  <input
+                    className="campo"
+                    type={mostrarClavesPerfil ? 'text' : 'password'}
+                    placeholder="Repite la clave nueva"
+                    value={passwordNuevaRepetirPerfil}
+                    onChange={(e) => setPasswordNuevaRepetirPerfil(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && cambiarPasswordPerfil()}
+                  />
+                  {passwordNuevaPerfil && passwordNuevaRepetirPerfil && passwordNuevaPerfil !== passwordNuevaRepetirPerfil && (
+                    <p style={{ margin: '-8px 0 12px', fontSize: 12, color: '#B91C1C' }}>Las claves nuevas no coinciden.</p>
+                  )}
                   <button
                     className="btn btn-secundario btn-chico"
                     style={{ width: '100%' }}
                     onClick={cambiarPasswordPerfil}
-                    disabled={!passwordActualPerfil || passwordNuevaPerfil.length < 8 || cambiandoPasswordPerfil}
+                    disabled={
+                      !passwordActualPerfil ||
+                      passwordNuevaPerfil.length < 8 ||
+                      passwordNuevaPerfil !== passwordNuevaRepetirPerfil ||
+                      cambiandoPasswordPerfil
+                    }
                   >
                     {cambiandoPasswordPerfil ? 'Guardando...' : 'Cambiar clave'}
                   </button>
