@@ -73,7 +73,7 @@ router.post('/:id/verificar-clave', manejarAsync(async (req, res) => {
 router.get('/:id/participantes', manejarAsync(async (req, res) => {
   const id = Number(req.params.id);
   const resultado = await pool.query(
-    'SELECT id, alias, tax_min, tax_max FROM participantes WHERE inventario_id = $1 ORDER BY alias',
+    'SELECT id, alias, nombre, tax_min, tax_max FROM participantes WHERE inventario_id = $1 ORDER BY alias',
     [id]
   );
   res.json(resultado.rows);
@@ -115,7 +115,7 @@ router.get('/:id/resumen', manejarAsync(async (req, res) => {
 
   const [participantes, capturas] = await Promise.all([
     pool.query(
-      `SELECT p.id, p.alias, p.tax_min, p.tax_max,
+      `SELECT p.id, p.alias, p.nombre, p.tax_min, p.tax_max,
               t.id AS tax_id, t.numero_tax, t.estado AS tax_estado,
               COALESCE(SUM(c.cantidad), 0)::int AS unidades
        FROM participantes p

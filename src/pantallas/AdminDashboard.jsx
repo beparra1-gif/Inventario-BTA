@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useToast } from '../contexto/ToastContext.jsx';
 import { obtenerSocket, unirseAInventario, unirseAdmin } from '../socket.js';
-import { IconoDescargar, IconoTienda } from '../componentes/Iconos.jsx';
+import { IconoDescargar, IconoTienda, IconoEliminar } from '../componentes/Iconos.jsx';
+import { derivarAlias, aliasDisponible } from '../utilidades/alias.js';
 
 export function AdminDashboard({ admin, onSalir }) {
   const mostrarToast = useToast();
@@ -15,7 +16,7 @@ export function AdminDashboard({ admin, onSalir }) {
   const [claveGenerada, setClaveGenerada] = useState(null);
   const [resumen, setResumen] = useState(null);
   const [perfiles, setPerfiles] = useState([]);
-  const [nuevoPerfil, setNuevoPerfil] = useState('');
+  const [nombreNuevoPerfil, setNombreNuevoPerfil] = useState('');
 
   const [emailNuevoAdmin, setEmailNuevoAdmin] = useState('');
   const [nombreNuevoAdmin, setNombreNuevoAdmin] = useState('');
@@ -117,14 +118,35 @@ export function AdminDashboard({ admin, onSalir }) {
   }
 
   async function agregarPerfil() {
-    if (!nuevoPerfil.trim()) return;
+    const nombre = nombreNuevoPerfil.trim();
+    if (!nombre) return;
+    const base = derivarAlias(nombre);
+    if (!base) return mostrarToast('Escribe un nombre válido', 'error');
+    const alias = aliasDisponible(base, perfiles.map((p) => p.alias));
     try {
-      await api.crearPerfilComoAdmin(inventario.id, admin.id, nuevoPerfil.trim());
-      setNuevoPerfil('');
+      await api.crearPerfilComoAdmin(inventario.id, admin.id, alias, nombre);
+      setNombreNuevoPerfil('');
       cargarPerfiles(inventario.id);
-      mostrarToast('Perfil agregado', 'ok');
+      mostrarToast(`${nombre} agregado — entra con "${alias}" + la clave`, 'ok');
     } catch {
       mostrarToast('No se pudo agregar el perfil', 'error');
+    }
+  }
+
+  async function quitarPerfil(perfil) {
+    const unidades = (resumen?.participantes ?? [])
+      .filter((p) => p.id === perfil.id)
+      .reduce((acc, p) => acc + p.unidades, 0);
+    if (unidades > 0 && !window.confirm(`${perfil.nombre || perfil.alias} ya capturó ${unidades} unidades. Si lo quitas, se borra todo lo que capturó. ¿Seguro?`)) {
+      return;
+    }
+    try {
+      await api.eliminarParticipante(perfil.id, admin.id);
+      cargarPerfiles(inventario.id);
+      cargarResumen(inventario.id);
+      mostrarToast('Perfil quitado', 'ok');
+    } catch {
+      mostrarToast('No se pudo quitar el perfil', 'error');
     }
   }
 
@@ -293,13 +315,22 @@ export function AdminDashboard({ admin, onSalir }) {
                 )}
 
                 <div style={{ marginTop: 16, borderTop: '1px solid var(--borde)', paddingTop: 16 }}>
-                  <label className="etiqueta">Perfiles de captura</label>
+                  <label className="etiqueta">Personal de captura</label>
                   <p style={{ fontSize: 12, color: 'var(--texto-tenue)', margin: '-4px 0 10px' }}>
-                    Cárgalos de antemano para que cada persona entre con su inicial+apellido y la clave de arriba, sin inventarse un alias.
+                    Agrégalos por nombre — cada uno entra con su inicial+apellido (ej. "Javier Mena" → <strong>jmena</strong>) más la clave de arriba. Se pueden agregar o quitar cuando haga falta.
                   </p>
                   {perfiles.map((p) => (
-                    <div key={p.id} className="chip" style={{ margin: '0 6px 6px 0', display: 'inline-flex' }}>
-                      {p.alias} · tax {p.tax_min}-{p.tax_max}
+                    <div key={p.id} className="chip" style={{ margin: '0 6px 6px 0', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
+                      {p.nombre ? `${p.nombre} (${p.alias})` : p.alias} · tax {p.tax_min}-{p.tax_max}
+                      {inventario.estado === 'abierto' && (
+                        <button
+                          onClick={() => quitarPerfil(p)}
+                          title="Quitar"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: 0 }}
+                        >
+                          <IconoEliminar tamano={13} />
+                        </button>
+                      )}
                     </div>
                   ))}
                   {inventario.estado === 'abierto' && (
@@ -307,12 +338,12 @@ export function AdminDashboard({ admin, onSalir }) {
                       <input
                         className="campo"
                         style={{ marginBottom: 0 }}
-                        placeholder="Ej. J.PEREZ"
-                        value={nuevoPerfil}
-                        onChange={(e) => setNuevoPerfil(e.target.value)}
+                        placeholder="Nombre completo, ej. Javier Mena"
+                        value={nombreNuevoPerfil}
+                        onChange={(e) => setNombreNuevoPerfil(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && agregarPerfil()}
                       />
-                      <button className="btn btn-secundario btn-chico" onClick={agregarPerfil} disabled={!nuevoPerfil.trim()}>
+                      <button className="btn btn-secundario btn-chico" onClick={agregarPerfil} disabled={!nombreNuevoPerfil.trim()}>
                         Agregar
                       </button>
                     </div>

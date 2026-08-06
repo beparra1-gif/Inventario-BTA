@@ -11,8 +11,9 @@ const RANGO_TAX = 100;
 // alias existente -> reusa el que ya tenía (así se puede seguir capturando
 // desde otro dispositivo entrando con el mismo alias). Se llama tanto desde
 // el alta que hace el admin de antemano como desde la entrada del propio
-// participante (POST /, con clave).
-async function obtenerOCrearParticipante(cliente, inventarioId, alias) {
+// participante (POST /, con clave). `nombre` es opcional y solo se guarda
+// al crear (no pisa el nombre ya guardado si el alias ya existía).
+async function obtenerOCrearParticipante(cliente, inventarioId, alias, nombre = null) {
   const existente = (
     await cliente.query('SELECT * FROM participantes WHERE inventario_id = $1 AND alias = $2', [
       inventarioId,
@@ -30,9 +31,9 @@ async function obtenerOCrearParticipante(cliente, inventarioId, alias) {
 
   return (
     await cliente.query(
-      `INSERT INTO participantes (inventario_id, alias, tax_min, tax_max)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [inventarioId, alias, taxMin, taxMax]
+      `INSERT INTO participantes (inventario_id, alias, nombre, tax_min, tax_max)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [inventarioId, alias, nombre, taxMin, taxMax]
     )
   ).rows[0];
 }
@@ -84,6 +85,7 @@ router.post('/admin', manejarAsync(async (req, res) => {
   const inventarioId = Number(req.body?.inventarioId);
   const adminId = Number(req.body?.adminId);
   const alias = String(req.body?.alias ?? '').trim();
+  const nombre = req.body?.nombre ? String(req.body.nombre).trim() : null;
 
   if (!Number.isInteger(inventarioId) || !alias) return res.status(400).json({ error: 'datos_incompletos' });
 
@@ -93,7 +95,7 @@ router.post('/admin', manejarAsync(async (req, res) => {
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
-    const participante = await obtenerOCrearParticipante(cliente, inventarioId, alias);
+    const participante = await obtenerOCrearParticipante(cliente, inventarioId, alias, nombre);
     await cliente.query('COMMIT');
     res.status(201).json(participante);
   } catch (error) {
@@ -102,6 +104,21 @@ router.post('/admin', manejarAsync(async (req, res) => {
   } finally {
     cliente.release();
   }
+}));
+
+// El admin quita a alguien del roster — se lleva sus taxes/capturas
+// (ON DELETE CASCADE) porque el alias deja de existir, así que si esa
+// persona ya había capturado algo hay que avisarle antes de confirmar
+// (lo hace el frontend, esto solo ejecuta).
+router.delete('/:id', manejarAsync(async (req, res) => {
+  const adminId = Number(req.query.adminId);
+  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
+  const id = Number(req.params.id);
+  const resultado = await pool.query('DELETE FROM participantes WHERE id = $1 RETURNING id', [id]);
+  if (!resultado.rows.length) return res.status(404).json({ error: 'participante_no_encontrado' });
+  res.status(204).end();
 }));
 
 router.get('/:id/taxes', manejarAsync(async (req, res) => {

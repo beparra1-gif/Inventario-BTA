@@ -65,8 +65,9 @@ export const api = {
 
   unirseComoParticipante: (inventarioId, clave, alias) =>
     post('/api/participantes', { inventarioId, clave, alias }),
-  crearPerfilComoAdmin: (inventarioId, adminId, alias) =>
-    post('/api/participantes/admin', { inventarioId, adminId, alias }),
+  crearPerfilComoAdmin: (inventarioId, adminId, alias, nombre) =>
+    post('/api/participantes/admin', { inventarioId, adminId, alias, nombre }),
+  eliminarParticipante: (id, adminId) => solicitar(`/api/participantes/${id}?adminId=${adminId}`, { method: 'DELETE' }),
   taxesDeParticipante: (participanteId) => solicitar(`/api/participantes/${participanteId}/taxes`),
   resumenParticipante: (participanteId) => solicitar(`/api/participantes/${participanteId}/resumen`),
 
