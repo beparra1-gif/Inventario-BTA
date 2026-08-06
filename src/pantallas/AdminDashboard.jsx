@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useToast } from '../contexto/ToastContext.jsx';
 import { obtenerSocket, unirseAInventario, unirseAdmin } from '../socket.js';
-import { IconoDescargar, IconoTienda, IconoEliminar } from '../componentes/Iconos.jsx';
+import { IconoDescargar, IconoTienda, IconoEliminar, IconoCompartir } from '../componentes/Iconos.jsx';
 import { derivarAlias, aliasDisponible } from '../utilidades/alias.js';
 import { formatearFecha } from '../utilidades/fecha.js';
 
@@ -250,6 +250,21 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     } catch {
       mostrarToast('No se pudo generar la clave', 'error');
     }
+  }
+
+  // Abre WhatsApp con el mensaje ya armado (tienda, N° de inventario, sigla
+  // y clave) para que el admin solo tenga que elegir el contacto y mandar —
+  // no guardamos teléfonos de nadie, por eso wa.me sin número: deja elegir
+  // el destinatario en la app misma.
+  function compartirPorWhatsapp(nombreOAlias, alias, clave) {
+    const lineas = [
+      `Hola ${nombreOAlias}, estos son tus datos para capturar el inventario:`,
+      '',
+      `Tienda: ${tienda.edp} · ${tienda.glosa}`,
+    ];
+    if (inventario.numero_inventario) lineas.push(`N° de inventario: ${inventario.numero_inventario}`);
+    lineas.push(`Tu sigla: ${alias}`, `Tu clave: ${clave}`);
+    window.open(`https://wa.me/?text=${encodeURIComponent(lineas.join('\n'))}`, '_blank', 'noopener,noreferrer');
   }
 
   async function quitarPerfil(perfil) {
@@ -739,9 +754,18 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                         Claves recién generadas para repartir
                       </div>
                       {clavesGeneradas.map((c) => (
-                        <div key={c.alias} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                        <div key={c.alias} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, padding: '4px 0', gap: 8 }}>
                           <span>{c.nombre} <span style={{ color: 'var(--texto-tenue)' }}>({c.alias})</span></span>
-                          <strong style={{ letterSpacing: 1 }}>{c.clave}</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                            <strong style={{ letterSpacing: 1 }}>{c.clave}</strong>
+                            <button
+                              onClick={() => compartirPorWhatsapp(c.nombre || c.alias, c.alias, c.clave)}
+                              title="Compartir por WhatsApp"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: 0 }}
+                            >
+                              <IconoCompartir tamano={15} />
+                            </button>
+                          </div>
                         </div>
                       ))}
                       <button className="btn-texto" style={{ padding: 0, marginTop: 6 }} onClick={() => setClavesGeneradas([])}>Ocultar</button>
@@ -759,6 +783,15 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                           <span style={{ color: 'var(--texto-tenue)' }}> · sin clave visible</span>
                         )}
                         {' '}· tax {p.tax_min}-{p.tax_max}
+                        {p.clave && (
+                          <button
+                            onClick={() => compartirPorWhatsapp(p.nombre || p.alias, p.alias, p.clave)}
+                            title="Compartir por WhatsApp"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: 0 }}
+                          >
+                            <IconoCompartir tamano={13} />
+                          </button>
+                        )}
                         <button
                           onClick={() => regenerarClave(p)}
                           title={p.clave ? 'Generar una clave nueva' : 'Esta clave es de antes de poder verse — genera una nueva'}
