@@ -40,21 +40,33 @@ export function parseArticuloManual(codigoProducto, talla) {
 
 // Consolida capturas individuales (una fila por escaneo/ingreso) sumando
 // cantidad por (codigo, talla) — usado tanto en la vista de un tax como en
-// el total del admin para todo el inventario.
+// el total del admin para todo el inventario. El frontend agrega acá mismo
+// filas "optimistas" (reconocido: null, mientras espera la respuesta del
+// servidor) para que la cantidad suba al toque sin esperar la red — si el
+// grupo ya tiene una fila confirmada, se prefiere esa por sobre la
+// pendiente para no hacer parpadear datos que ya se conocían.
 export function agruparCapturas(capturas) {
   const mapa = new Map();
   for (const c of capturas) {
     const clave = `${c.codigo}-${c.talla}`;
-    const actual = mapa.get(clave) ?? {
-      codigo: c.codigo,
-      talla: c.talla,
-      cantidad: 0,
-      reconocido: c.reconocido,
-      descripcion: c.descripcion ?? null,
-      tallaReal: c.tallaReal ?? null,
-    };
+    const actual = mapa.get(clave);
+    if (!actual) {
+      mapa.set(clave, {
+        codigo: c.codigo,
+        talla: c.talla,
+        cantidad: c.cantidad,
+        reconocido: c.reconocido,
+        descripcion: c.descripcion ?? null,
+        tallaReal: c.tallaReal ?? null,
+      });
+      continue;
+    }
     actual.cantidad += c.cantidad;
-    mapa.set(clave, actual);
+    if (actual.reconocido === null && c.reconocido !== null && c.reconocido !== undefined) {
+      actual.reconocido = c.reconocido;
+      actual.descripcion = c.descripcion ?? null;
+      actual.tallaReal = c.tallaReal ?? null;
+    }
   }
   return [...mapa.values()];
 }

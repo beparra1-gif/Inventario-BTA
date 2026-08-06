@@ -5,7 +5,7 @@ import { useEscanerCodigoBarras } from '../hooks/useEscanerCodigoBarras.js';
 import { IconoEscanear, IconoCerrar, IconoAlerta, IconoEliminar } from '../componentes/Iconos.jsx';
 import { FOTO_PLACEHOLDER } from '../utilidades/fotoPlaceholder.js';
 import { EncabezadoInventario } from '../componentes/EncabezadoInventario.jsx';
-import { sonarExito, sonarError, sonarEncolado } from '../utilidades/feedback.js';
+import { sonarEscaneado, sonarExito, sonarError, sonarEncolado } from '../utilidades/feedback.js';
 import { useColaOffline } from '../hooks/useColaOffline.js';
 // Mismas funciones puras que usa el backend (sin dependencias de Node),
 // reusadas acá tal cual para no duplicar lógica ni arriesgar que el cliente
@@ -55,10 +55,18 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
 
   // Si crearCaptura falla por falta de conexión (no porque el servidor la
   // rechace), la captura queda encolada acá en vez de perderse, y se manda
-  // sola apenas vuelva la señal.
+  // sola apenas vuelva la señal. Si la fila optimista que la originó sigue
+  // en pantalla (idLocal calza) se reemplaza en el mismo lugar; si no
+  // (por ejemplo, se recargó la página y la cola se sincroniza sola al
+  // volver la conexión) se agrega como fila nueva.
   const { cola, encolar } = useColaOffline(async (item) => {
     const nueva = await api.crearCaptura(item);
-    setCapturas((actuales) => [nueva, ...actuales]);
+    setCapturas((actuales) => {
+      const yaEstaEnPantalla = actuales.some((c) => c.idLocal === item.idLocal);
+      return yaEstaEnPantalla
+        ? actuales.map((c) => (c.idLocal === item.idLocal ? nueva : c))
+        : [nueva, ...actuales];
+    });
   });
 
   useEffect(() => {
@@ -79,14 +87,18 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
   // error.status solo existe si el servidor alcanzó a responder (ver
   // src/api.js) — si no está, fetch nunca llegó a ningún lado: es falta de
   // conexión, no un rechazo real, así que se encola en vez de mostrarse
-  // como error.
-  function manejarErrorCaptura(error, itemParaEncolar) {
+  // como error. idLocal identifica la fila optimista que hay que corregir:
+  // si fue por falta de conexión se deja tal cual (queda "pendiente",
+  // useColaOffline la reconcilia sola al subir), si fue un rechazo real del
+  // servidor se saca de la lista.
+  function manejarErrorCaptura(error, itemParaEncolar, idLocal) {
     if (!error.status && itemParaEncolar) {
       encolar(itemParaEncolar);
       sonarEncolado();
       mostrarToast('Sin conexión — se guardó en el celular y se sube sola cuando vuelva la señal', 'error');
       return;
     }
+    if (idLocal) setCapturas((actuales) => actuales.filter((c) => c.idLocal !== idLocal));
     if (error.info?.error === 'inventario_cerrado') {
       mostrarToast('El admin cerró este inventario — ya no se puede seguir capturando', 'error');
     } else {
@@ -95,21 +107,36 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
     sonarError();
   }
 
-  // Escaneo: sin paso de validación aparte antes de guardar — la respuesta
-  // de crearCaptura ya trae reconocido/descripción (el backend las calcula
-  // igual para el snapshot), así se ahorra una vuelta de red por escaneo y
-  // la captura queda lo más rápida posible. Sin notificación con el nombre
-  // del producto (interrumpía el ritmo de escaneo): el sonido ya avisa si
-  // quedó reconocido o no, y el nombre aparece en la lista de abajo.
-  async function agregarPorEscaneo(codigo, talla, ean13Original) {
-    const item = { taxId: tax.id, codigo, talla, ean13Original, cantidad: 1, origen: 'scan' };
+  // Captura optimista: la fila aparece y suma al total al toque (reconocido
+  // en null = "pendiente"), sin esperar la vuelta de la red — clave en
+  // tiendas lejos del datacenter, donde esa vuelta puede sentirse lenta si
+  // es lo único que decide cuándo se ve reflejado el escaneo. Se reemplaza
+  // por la fila real apenas responde el servidor (o se marca/saca según
+  // corresponda si falla, ver manejarErrorCaptura).
+  async function crearCapturaOptimista(datos) {
+    const idLocal = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setCapturas((actuales) => [
+      { idLocal, codigo: datos.codigo, talla: datos.talla, cantidad: datos.cantidad, reconocido: null, descripcion: null, tallaReal: null },
+      ...actuales,
+    ]);
+    const item = { ...datos, idLocal };
     try {
       const nueva = await api.crearCaptura(item);
-      setCapturas((actuales) => [nueva, ...actuales]);
+      setCapturas((actuales) => actuales.map((c) => (c.idLocal === idLocal ? nueva : c)));
       nueva.reconocido ? sonarExito() : sonarError();
     } catch (error) {
-      manejarErrorCaptura(error, item);
+      manejarErrorCaptura(error, item, idLocal);
     }
+  }
+
+  // Escaneo: sin paso de validación aparte antes de guardar — la respuesta
+  // de crearCaptura ya trae reconocido/descripción (el backend las calcula
+  // igual para el snapshot). Sin notificación con el nombre del producto
+  // (interrumpía el ritmo de escaneo): el sonido ya avisa si quedó
+  // reconocido o no, y el nombre aparece en la lista de abajo.
+  function agregarPorEscaneo(codigo, talla, ean13Original) {
+    sonarEscaneado();
+    crearCapturaOptimista({ taxId: tax.id, codigo, talla, ean13Original, cantidad: 1, origen: 'scan' });
   }
 
   useEscanerCodigoBarras(
@@ -141,29 +168,21 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
     return () => clearTimeout(timeout);
   }, [codigoManual, tallaManual]);
 
-  async function confirmarManual() {
+  function confirmarManual() {
     const resultado = parseArticuloManual(codigoManual, tallaManual);
     if (!resultado.valido) return;
-    const item = {
+    crearCapturaOptimista({
       taxId: tax.id,
       codigo: resultado.codigoProducto,
       talla: resultado.tallaCruda,
       ean13Original: null,
       cantidad: 1,
       origen: 'manual',
-    };
-    try {
-      const nueva = await api.crearCaptura(item);
-      setCapturas((actuales) => [nueva, ...actuales]);
-      nueva.reconocido ? sonarExito() : sonarError();
-    } catch (error) {
-      manejarErrorCaptura(error, item);
-    } finally {
-      setCodigoManual('');
-      setTallaManual('');
-      setPreviaManual(null);
-      setMostrarManual(false);
-    }
+    });
+    setCodigoManual('');
+    setTallaManual('');
+    setPreviaManual(null);
+    setMostrarManual(false);
   }
 
   function empezarEdicion(item) {
@@ -279,18 +298,20 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
             {agrupado.map((item) => {
               const clave = `${item.codigo}-${item.talla}`;
               const seEstaEditando = editando === clave;
+              const pendiente = item.reconocido === null;
+              const colorBorde = pendiente ? 'var(--borde)' : item.reconocido ? 'var(--exito)' : '#DC2626';
+              // agruparCapturas no conserva el flag "offline" (solo lo que
+              // el backend devuelve), así que se detecta acá mismo mirando
+              // la cola pendiente de subir.
+              const enColaOffline = cola.some((c) => c.codigo === item.codigo && c.talla === item.talla);
               return (
-                <div
-                  className="item-captura"
-                  key={clave}
-                  style={{ border: `2px solid ${item.reconocido ? 'var(--exito)' : '#DC2626'}` }}
-                >
+                <div className="item-captura" key={clave} style={{ border: `2px solid ${colorBorde}` }}>
                   <div className="item-captura-fila">
                     <span className="item-captura-codigo">{formatearCodigo(item.codigo)}</span>
                     <span className="item-captura-sku">SKU: {etiquetaTalla(item)}</span>
                     <span className="item-captura-cant">
                       cant:{' '}
-                      {!taxCerrado && seEstaEditando ? (
+                      {!taxCerrado && !pendiente && seEstaEditando ? (
                         <input
                           className="campo"
                           style={{ width: 48, textAlign: 'center', padding: 4, marginBottom: 0, display: 'inline-block' }}
@@ -304,15 +325,15 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
                         />
                       ) : (
                         <strong
-                          style={{ cursor: taxCerrado ? 'default' : 'pointer' }}
-                          title="Tocar para editar la cantidad"
-                          onClick={() => !taxCerrado && empezarEdicion(item)}
+                          style={{ cursor: taxCerrado || pendiente ? 'default' : 'pointer' }}
+                          title={pendiente ? undefined : 'Tocar para editar la cantidad'}
+                          onClick={() => !taxCerrado && !pendiente && empezarEdicion(item)}
                         >
                           {item.cantidad}
                         </strong>
                       )}
                     </span>
-                    {!taxCerrado && (
+                    {!taxCerrado && !pendiente && (
                       <button
                         onClick={() => eliminarGrupo(item)}
                         title="Eliminar"
@@ -322,7 +343,9 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
                       </button>
                     )}
                   </div>
-                  <div className="descripcion-linea">{item.descripcion || 'Artículo no reconocido'}</div>
+                  <div className="descripcion-linea">
+                    {pendiente ? (enColaOffline ? 'Pendiente de subir…' : 'Verificando…') : item.descripcion || 'Artículo no reconocido'}
+                  </div>
                 </div>
               );
             })}

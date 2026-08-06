@@ -30,6 +30,15 @@ function pitido(frecuencia, duracionMs, { volumen = 0.15, retrasoMs = 0 } = {}) 
   oscilador.stop(inicio + duracionMs / 1000);
 }
 
+// Clic instantáneo apenas se detecta el escaneo, antes de esperar la
+// respuesta del servidor — confirma que el escaneo "se escuchó" sin
+// depender de la latencia de red (que en tiendas lejos del datacenter puede
+// sentirse lenta si el único feedback llega recién cuando responde la API).
+export function sonarEscaneado() {
+  pitido(660, 35, { volumen: 0.1 });
+  navigator.vibrate?.(10);
+}
+
 export function sonarExito() {
   pitido(880, 90);
   navigator.vibrate?.(30);

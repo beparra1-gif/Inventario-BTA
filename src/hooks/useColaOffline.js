@@ -34,8 +34,14 @@ export function useColaOffline(enviar) {
     guardarCola(cola);
   }, [cola]);
 
+  // Si el item ya trae su propio idLocal (ej. venía de una fila optimista
+  // en pantalla que hay que poder reconciliar después) se respeta tal
+  // cual; si no, se genera uno acá.
   const encolar = useCallback((item) => {
-    setCola((actual) => [...actual, { ...item, idLocal: `${Date.now()}-${Math.random().toString(36).slice(2)}` }]);
+    setCola((actual) => [
+      ...actual,
+      { idLocal: `${Date.now()}-${Math.random().toString(36).slice(2)}`, ...item },
+    ]);
   }, []);
 
   const sincronizar = useCallback(async () => {
