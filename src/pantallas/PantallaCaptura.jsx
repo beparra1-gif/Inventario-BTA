@@ -238,10 +238,6 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
           </div>
         )}
 
-        <button className="btn-texto" style={{ padding: 0, marginBottom: 8 }} onClick={onVolver}>
-          ‹ Seguir con otro tax
-        </button>
-
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '1.3em', fontWeight: 700 }}>Tax {tax.numero_tax}</h1>
