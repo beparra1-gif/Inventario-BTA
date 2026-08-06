@@ -216,15 +216,22 @@ label.etiqueta {
 .btn-secundario { background: var(--fondo-sutil); color: var(--texto); border: 1px solid var(--borde); }
 .btn-secundario:hover:not(:disabled) { border-color: var(--primario); color: var(--primario); }
 
+/* Se usa siempre solo (no combinado con .btn), así que tiene que traer su
+   propio reset — si no, queda con el borde nativo del <button> del
+   navegador en vez de verse como un link, como pasaba antes acá. */
 .btn-texto {
   width: auto;
   background: none;
+  border: none;
   color: var(--texto-tenue);
   padding: 8px;
   font-size: 14px;
   text-decoration: underline;
+  cursor: pointer;
+  font-family: inherit;
 }
 .btn-texto:hover { color: var(--primario); }
+.btn-texto:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-chico { width: auto; padding: 8px 14px; font-size: 13px; }
 
