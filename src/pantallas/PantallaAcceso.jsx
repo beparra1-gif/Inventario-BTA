@@ -33,7 +33,7 @@ export function PantallaAcceso({ onAcceso, onIrAdmin }) {
       onAcceso({ tienda, inventario });
     } catch (error) {
       mostrarToast(
-        error.status === 404 ? `Tienda ${tienda.edp} no tiene un inventario abierto` : 'No se pudo conectar con el servidor',
+        error.status === 404 ? `Tienda ${tienda.edp} todavía no tiene ningún inventario` : 'No se pudo conectar con el servidor',
         'error'
       );
     } finally {

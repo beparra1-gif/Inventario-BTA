@@ -110,16 +110,21 @@ router.get('/recientes', manejarAsync(async (req, res) => {
   res.json(resultado.rows);
 }));
 
-// Participante: para saber si hay algo abierto en esa tienda antes de mostrar el login.
+// Participante: ubica el inventario vigente de esa tienda (el más reciente,
+// en cualquier estado) antes de mostrar el login. No se filtra por
+// "abierto": si el más reciente está cerrado, igual se deja entrar a
+// verlo en modo solo lectura (las acciones de escritura se rechazan aparte,
+// en cada endpoint) — así el capturador nunca se queda sin poder ni
+// consultar lo que ya capturó.
 router.get('/abierto/:edp', manejarAsync(async (req, res) => {
   const edp = Number(req.params.edp);
   if (!Number.isInteger(edp)) return res.status(400).json({ error: 'edp_invalido' });
 
   const resultado = await pool.query(
-    `SELECT * FROM inventarios WHERE edp = $1 AND estado = 'abierto' ORDER BY creado_en DESC LIMIT 1`,
+    `SELECT * FROM inventarios WHERE edp = $1 ORDER BY creado_en DESC LIMIT 1`,
     [edp]
   );
-  if (!resultado.rows.length) return res.status(404).json({ error: 'sin_inventario_abierto' });
+  if (!resultado.rows.length) return res.status(404).json({ error: 'sin_inventario' });
   res.json(sinClaveHash(resultado.rows[0]));
 }));
 

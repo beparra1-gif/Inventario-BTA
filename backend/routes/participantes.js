@@ -48,7 +48,10 @@ async function obtenerOCrearParticipante(cliente, inventarioId, alias, nombre = 
 
 // Login del capturador: sigla (alias) + su clave numérica personal — ya no
 // se pide la clave compartida del inventario, cada perfil tiene la suya
-// (ver migración 004) para que nadie use por error el perfil de otro.
+// (ver migración 004) para que nadie use por error el perfil de otro. No
+// exige que el inventario esté "abierto": si lo cerró el admin, el
+// capturador igual puede entrar a ver en modo solo lectura — cada endpoint
+// que sí escribe (abrir tax, capturar, etc.) rechaza aparte si corresponde.
 router.post('/login', manejarAsync(async (req, res) => {
   const inventarioId = Number(req.body?.inventarioId);
   const alias = String(req.body?.alias ?? '').trim();
@@ -58,8 +61,8 @@ router.post('/login', manejarAsync(async (req, res) => {
     return res.status(400).json({ error: 'datos_incompletos' });
   }
 
-  const inventario = (await pool.query('SELECT estado FROM inventarios WHERE id = $1', [inventarioId])).rows[0];
-  if (!inventario || inventario.estado !== 'abierto') return res.status(409).json({ error: 'inventario_no_disponible' });
+  const inventario = (await pool.query('SELECT id FROM inventarios WHERE id = $1', [inventarioId])).rows[0];
+  if (!inventario) return res.status(404).json({ error: 'inventario_no_encontrado' });
 
   const participante = (
     await pool.query('SELECT * FROM participantes WHERE inventario_id = $1 AND alias = $2', [inventarioId, alias])
