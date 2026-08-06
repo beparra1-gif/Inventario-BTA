@@ -1,0 +1,373 @@
+/* Mismo lenguaje visual que buscador-precio (Documents/GitHub/buscador-precio):
+   tarjetas redondeadas, rojo Bata, tipografía del sistema estilo iOS.
+   Acá además se agrega soporte de tema oscuro y layouts que se adaptan a
+   tablet/PC, no solo a celular. */
+
+:root {
+  --primario: #E20613;
+  --primario-hover: #B9000B;
+  --acento: #EF4444;
+  --exito: #16A34A;
+  --advertencia: #CA8A04;
+
+  --fondo: #F3F4F6;
+  --fondo-tarjeta: #FFFFFF;
+  --fondo-sutil: #F9FAFB;
+  --borde: #E5E7EB;
+  --texto: #374151;
+  --texto-tenue: #6B7280;
+  --texto-suave: #9CA3AF;
+
+  --radio: 14px;
+  --radio-chico: 10px;
+  --sombra: 0 4px 20px rgba(0, 0, 0, 0.06);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #000000;
+    --fondo-tarjeta: #1C1C1E;
+    --fondo-sutil: #2C2C2E;
+    --borde: #38383A;
+    --texto: #F2F2F7;
+    --texto-tenue: #AEAEB2;
+    --texto-suave: #8E8E93;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, input, select {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- Layout ---------- */
+
+.pantalla {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+}
+
+.contenedor {
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.contenedor-ancho {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+@media (min-width: 720px) {
+  .pantalla { padding-top: max(40px, env(safe-area-inset-top)); }
+}
+
+.tarjeta {
+  width: 100%;
+  background: var(--fondo-tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  padding: 24px;
+}
+
+.titulo-pantalla {
+  text-align: center;
+  font-size: 1.35em;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin: 0 0 22px;
+}
+
+.subtitulo {
+  text-align: center;
+  color: var(--texto-tenue);
+  font-size: 13px;
+  margin: -12px 0 20px;
+}
+
+/* ---------- Formularios ---------- */
+
+.campo {
+  width: 100%;
+  padding: 15px 16px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  background: var(--fondo-sutil);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  margin-bottom: 14px;
+}
+
+.campo:focus {
+  border-color: var(--primario);
+  box-shadow: 0 0 0 3px rgba(226, 6, 19, 0.12);
+  background: var(--fondo-tarjeta);
+}
+
+label.etiqueta {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--texto-tenue);
+  margin-bottom: 6px;
+}
+
+/* ---------- Botones ---------- */
+
+.btn {
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: var(--radio-chico);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.1s, background 0.15s;
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(0.98); }
+
+.btn-primario { background: var(--primario); color: white; }
+.btn-primario:hover:not(:disabled) { background: var(--primario-hover); }
+
+.btn-secundario { background: var(--fondo-sutil); color: var(--texto); border: 1px solid var(--borde); }
+.btn-secundario:hover:not(:disabled) { border-color: var(--primario); color: var(--primario); }
+
+.btn-texto {
+  width: auto;
+  background: none;
+  color: var(--texto-tenue);
+  padding: 8px;
+  font-size: 14px;
+  text-decoration: underline;
+}
+.btn-texto:hover { color: var(--primario); }
+
+.btn-chico { width: auto; padding: 8px 14px; font-size: 13px; }
+
+/* ---------- Chips / badges ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--fondo-sutil);
+  border: 1px solid var(--borde);
+  color: var(--texto);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.badge-ok { background: #DCFCE7; color: var(--exito); }
+.badge-alerta { background: #FEF9C3; color: var(--advertencia); }
+.badge-error { background: #FEE2E2; color: #B91C1C; }
+
+@media (prefers-color-scheme: dark) {
+  .badge-ok { background: rgba(22, 163, 74, 0.2); }
+  .badge-alerta { background: rgba(202, 138, 4, 0.2); }
+  .badge-error { background: rgba(185, 28, 28, 0.25); }
+}
+
+/* ---------- Listas de artículos capturados ---------- */
+
+.lista-capturas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 720px) {
+  .lista-capturas { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+}
+
+.item-captura {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: var(--fondo-tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.item-captura img {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--fondo-sutil);
+  border: 1px solid var(--borde);
+  flex-shrink: 0;
+}
+
+.item-captura .detalle { flex: 1; min-width: 0; }
+.item-captura .codigo { font-weight: 700; font-size: 14px; }
+.item-captura .descripcion { font-size: 12px; color: var(--texto-tenue); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.selector-cantidad {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.selector-cantidad button {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--borde);
+  background: var(--fondo-sutil);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.selector-cantidad span { min-width: 22px; text-align: center; font-weight: 700; }
+
+/* ---------- Botón flotante de escaneo/foco ---------- */
+
+.boton-flotante {
+  position: fixed;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  right: 24px;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--primario);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 15px rgba(226, 6, 19, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+/* ---------- Hoja inferior / modal ---------- */
+
+.fondo-hoja {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+
+.hoja {
+  width: 100%;
+  max-width: 480px;
+  max-height: 88dvh;
+  background: var(--fondo-tarjeta);
+  border-radius: 20px 20px 0 0;
+  padding: 20px 20px max(20px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  animation: subir 0.2s ease;
+}
+
+@keyframes subir {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---------- Toasts ---------- */
+
+.toasts {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: calc(100% - 32px);
+  max-width: 420px;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--texto);
+  color: var(--fondo-tarjeta);
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.toast.error { background: var(--acento); color: white; }
+.toast.ok { background: var(--exito); color: white; }
+
+/* ---------- Dashboard admin (grid en PC, columna en celular) ---------- */
+
+.grilla-admin {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 860px) {
+  .grilla-admin { grid-template-columns: 320px 1fr; align-items: start; }
+}
+
+.tabla-resumen { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tabla-resumen th, .tabla-resumen td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borde); }
+.tabla-resumen th { color: var(--texto-tenue); font-weight: 600; text-transform: uppercase; font-size: 11px; }
