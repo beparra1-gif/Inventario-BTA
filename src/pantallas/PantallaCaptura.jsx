@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { useToast } from '../contexto/ToastContext.jsx';
 import { useEscanerCodigoBarras } from '../hooks/useEscanerCodigoBarras.js';
-import { IconoEscanear, IconoCerrar, IconoCheck, IconoAlerta, IconoEliminar } from '../componentes/Iconos.jsx';
+import { IconoEscanear, IconoCerrar, IconoAlerta, IconoEliminar } from '../componentes/Iconos.jsx';
 import { FOTO_PLACEHOLDER } from '../utilidades/fotoPlaceholder.js';
 import { EncabezadoInventario } from '../componentes/EncabezadoInventario.jsx';
 import { sonarExito, sonarError, sonarEncolado } from '../utilidades/feedback.js';
@@ -238,12 +238,18 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.3em', fontWeight: 700 }}>Tax {tax.numero_tax}</h1>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--texto-tenue)' }}>
-              {participante.nombre || participante.alias} · {totalUnidades} unidad{totalUnidades === 1 ? '' : 'es'}
-            </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div>
+              <h1 style={{ margin: 0, fontSize: '1.3em', fontWeight: 700 }}>Tax {tax.numero_tax}</h1>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--texto-tenue)' }}>{participante.nombre || participante.alias}</p>
+            </div>
+            <div style={{ textAlign: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '6px 14px' }}>
+              <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{totalUnidades}</div>
+              <div style={{ fontSize: 10, color: 'var(--texto-tenue)', textTransform: 'uppercase' }}>
+                unidad{totalUnidades === 1 ? '' : 'es'}
+              </div>
+            </div>
           </div>
           {!taxCerrado && (
             <div style={{ display: 'flex', gap: 6 }}>
@@ -274,45 +280,49 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
               const clave = `${item.codigo}-${item.talla}`;
               const seEstaEditando = editando === clave;
               return (
-                <div className="item-captura" key={clave} style={{ padding: '10px 12px' }}>
-                  <span style={{ flexShrink: 0, color: item.reconocido ? 'var(--exito)' : '#B91C1C' }}>
-                    {item.reconocido ? <IconoCheck tamano={18} /> : <IconoAlerta tamano={18} />}
-                  </span>
-                  <div className="detalle">
-                    <div className="codigo">
-                      {formatearCodigo(item.codigo)} · {etiquetaTalla(item)}
-                      <span className="descripcion-inline"> · {item.descripcion || 'Artículo no reconocido'}</span>
-                    </div>
-                  </div>
-                  {!taxCerrado && seEstaEditando ? (
-                    <input
-                      className="campo"
-                      style={{ width: 56, textAlign: 'center', padding: 8, marginBottom: 0 }}
-                      type="number"
-                      inputMode="numeric"
-                      autoFocus
-                      value={valorEdicion}
-                      onChange={(e) => setValorEdicion(e.target.value)}
-                      onBlur={() => guardarEdicion(item)}
-                      onKeyDown={(e) => e.key === 'Enter' && guardarEdicion(item)}
-                    />
-                  ) : (
-                    <span
-                      style={{ fontWeight: 700, minWidth: 24, textAlign: 'center', cursor: taxCerrado ? 'default' : 'pointer' }}
-                      onClick={() => !taxCerrado && empezarEdicion(item)}
-                    >
-                      {item.cantidad}
+                <div
+                  className="item-captura"
+                  key={clave}
+                  style={{ border: `2px solid ${item.reconocido ? 'var(--exito)' : '#DC2626'}` }}
+                >
+                  <div className="item-captura-fila">
+                    <span className="item-captura-codigo">{formatearCodigo(item.codigo)}</span>
+                    <span className="item-captura-sku">SKU: {etiquetaTalla(item)}</span>
+                    <span className="item-captura-cant">
+                      cant:{' '}
+                      {!taxCerrado && seEstaEditando ? (
+                        <input
+                          className="campo"
+                          style={{ width: 48, textAlign: 'center', padding: 4, marginBottom: 0, display: 'inline-block' }}
+                          type="number"
+                          inputMode="numeric"
+                          autoFocus
+                          value={valorEdicion}
+                          onChange={(e) => setValorEdicion(e.target.value)}
+                          onBlur={() => guardarEdicion(item)}
+                          onKeyDown={(e) => e.key === 'Enter' && guardarEdicion(item)}
+                        />
+                      ) : (
+                        <strong
+                          style={{ cursor: taxCerrado ? 'default' : 'pointer' }}
+                          title="Tocar para editar la cantidad"
+                          onClick={() => !taxCerrado && empezarEdicion(item)}
+                        >
+                          {item.cantidad}
+                        </strong>
+                      )}
                     </span>
-                  )}
-                  {!taxCerrado && (
-                    <button
-                      onClick={() => eliminarGrupo(item)}
-                      title="Eliminar"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--texto-suave)', flexShrink: 0 }}
-                    >
-                      <IconoEliminar tamano={16} />
-                    </button>
-                  )}
+                    {!taxCerrado && (
+                      <button
+                        onClick={() => eliminarGrupo(item)}
+                        title="Eliminar"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--texto-suave)', flexShrink: 0, display: 'flex' }}
+                      >
+                        <IconoEliminar tamano={16} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="descripcion-linea">{item.descripcion || 'Artículo no reconocido'}</div>
                 </div>
               );
             })}
