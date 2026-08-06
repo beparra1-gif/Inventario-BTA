@@ -140,7 +140,7 @@ router.get('/:id/resumen', manejarAsync(async (req, res) => {
   });
 }));
 
-// Genera el .txt legacy (una línea por unidad) y marca el inventario como exportado.
+// Genera el .txt (una línea por código+talla, cantidad sumada) y marca el inventario como exportado.
 router.get('/:id/exportar', manejarAsync(async (req, res) => {
   const id = Number(req.params.id);
 

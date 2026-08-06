@@ -59,16 +59,14 @@ export function agruparCapturas(capturas) {
   return [...mapa.values()];
 }
 
-// Réplica el formato legacy exacto: una línea por unidad física (no por
-// fila de captura), verificado contra INV_BTA_22594_230.txt.
+// Una línea por código+talla, con la cantidad total ya sumada (no una línea
+// por unidad física repetida) — así si 3 capturadores escanean el mismo
+// artículo y talla, el .txt queda compacto en vez de tener la misma línea
+// decenas de veces.
 export function generarLineasExportacion({ numeroInventario, edp, capturas }) {
-  const lineas = [];
-  for (const c of capturas) {
-    for (let i = 0; i < c.cantidad; i++) {
-      lineas.push(`${numeroInventario};${edp};${c.codigo}${c.talla};1;`);
-    }
-  }
-  return lineas;
+  return agruparCapturas(capturas).map(
+    (c) => `${numeroInventario};${edp};${c.codigo}${c.talla};${c.cantidad};`
+  );
 }
 
 export function nombreArchivoExportacion({ numeroInventario, edp }) {

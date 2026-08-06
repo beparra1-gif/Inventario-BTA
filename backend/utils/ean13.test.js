@@ -73,12 +73,26 @@ describe('exportación .txt', () => {
     );
   });
 
-  it('expande cada captura a una línea por unidad, igual que el .txt real', () => {
+  it('genera una línea por código+talla con la cantidad total', () => {
     const lineas = generarLineasExportacion({
       numeroInventario: '22594',
       edp: 230,
-      capturas: [{ codigo: '861336007'.slice(0, 7), talla: '861336007'.slice(7), cantidad: 2 }],
+      capturas: [{ codigo: '8613360', talla: '07', cantidad: 2 }],
     });
-    expect(lineas).toEqual(['22594;230;861336007;1;', '22594;230;861336007;1;']);
+    expect(lineas).toEqual(['22594;230;861336007;2;']);
+  });
+
+  it('suma capturas repetidas del mismo código+talla en una sola línea', () => {
+    const lineas = generarLineasExportacion({
+      numeroInventario: '22594',
+      edp: 230,
+      capturas: [
+        { codigo: '8613360', talla: '07', cantidad: 1 },
+        { codigo: '8613360', talla: '07', cantidad: 1 },
+        { codigo: '8613360', talla: '07', cantidad: 3 },
+        { codigo: '2010122', talla: '01', cantidad: 5 },
+      ],
+    });
+    expect(lineas).toEqual(['22594;230;861336007;5;', '22594;230;201012201;5;']);
   });
 });
