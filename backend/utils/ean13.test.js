@@ -50,14 +50,19 @@ describe('parseArticuloManual', () => {
 describe('agruparCapturas', () => {
   it('suma cantidades repetidas del mismo codigo+talla', () => {
     const resultado = agruparCapturas([
-      { codigo: '8613360', talla: '07', cantidad: 1, reconocido: true, descripcion: 'X' },
-      { codigo: '8613360', talla: '07', cantidad: 3, reconocido: true, descripcion: 'X' },
-      { codigo: '8613360', talla: '08', cantidad: 2, reconocido: true, descripcion: 'X' },
+      { codigo: '8613360', talla: '07', cantidad: 1, reconocido: true, descripcion: 'X', tallaReal: '44' },
+      { codigo: '8613360', talla: '07', cantidad: 3, reconocido: true, descripcion: 'X', tallaReal: '44' },
+      { codigo: '8613360', talla: '08', cantidad: 2, reconocido: true, descripcion: 'X', tallaReal: '45' },
     ]);
     expect(resultado).toEqual([
-      { codigo: '8613360', talla: '07', cantidad: 4, reconocido: true, descripcion: 'X' },
-      { codigo: '8613360', talla: '08', cantidad: 2, reconocido: true, descripcion: 'X' },
+      { codigo: '8613360', talla: '07', cantidad: 4, reconocido: true, descripcion: 'X', tallaReal: '44' },
+      { codigo: '8613360', talla: '08', cantidad: 2, reconocido: true, descripcion: 'X', tallaReal: '45' },
     ]);
+  });
+
+  it('deja tallaReal en null si no viene informada', () => {
+    const resultado = agruparCapturas([{ codigo: '2010122', talla: '01', cantidad: 1, reconocido: false }]);
+    expect(resultado[0].tallaReal).toBeNull();
   });
 });
 

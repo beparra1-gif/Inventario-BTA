@@ -51,6 +51,7 @@ export function agruparCapturas(capturas) {
       cantidad: 0,
       reconocido: c.reconocido,
       descripcion: c.descripcion ?? null,
+      tallaReal: c.tallaReal ?? null,
     };
     actual.cantidad += c.cantidad;
     mapa.set(clave, actual);

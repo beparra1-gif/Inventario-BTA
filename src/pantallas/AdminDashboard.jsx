@@ -335,7 +335,7 @@ export function AdminDashboard({ admin, onSalir }) {
                       {resumen.consolidado.map((item) => (
                         <tr key={`${item.codigo}-${item.talla}`}>
                           <td>{item.codigo}</td>
-                          <td>{item.talla === '01' ? 'Única' : item.talla}</td>
+                          <td>{item.tallaReal || (item.talla === '01' ? 'Única' : `${item.talla} (sin traducir)`)}</td>
                           <td>{item.descripcion || '—'}</td>
                           <td>{item.reconocido ? 'Sí' : 'No'}</td>
                           <td>{item.cantidad}</td>

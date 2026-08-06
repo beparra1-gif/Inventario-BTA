@@ -18,7 +18,8 @@ router.get('/agrupado', manejarAsync(async (req, res) => {
   if (!Number.isInteger(taxId)) return res.status(400).json({ error: 'taxId_requerido' });
   const filas = (
     await pool.query(
-      `SELECT codigo, talla, cantidad, reconocido, descripcion_snapshot AS descripcion FROM capturas WHERE tax_id = $1`,
+      `SELECT codigo, talla, cantidad, reconocido, descripcion_snapshot AS descripcion, talla_real_snapshot AS "tallaReal"
+       FROM capturas WHERE tax_id = $1`,
       [taxId]
     )
   ).rows;
@@ -45,23 +46,25 @@ router.post('/', manejarAsync(async (req, res) => {
   if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
   if (tax.estado !== 'abierto') return res.status(409).json({ error: 'tax_cerrado' });
 
-  const producto = (
-    await pool.query('SELECT descripcion FROM productos_maestro WHERE codigo = $1 AND talla = $2', [codigo, talla])
-  ).rows[0];
+  const [producto, regla] = await Promise.all([
+    pool.query('SELECT descripcion FROM productos_maestro WHERE codigo = $1 AND talla = $2', [codigo, talla]),
+    pool.query('SELECT talla_real FROM reglas_talla WHERE prefijo = $1 AND talla_cruda = $2', [codigo, talla]),
+  ]);
 
   const nueva = (
     await pool.query(
-      `INSERT INTO capturas (tax_id, codigo, talla, ean13_original, cantidad, reconocido, descripcion_snapshot, foto_url_snapshot, origen)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      `INSERT INTO capturas (tax_id, codigo, talla, ean13_original, cantidad, reconocido, descripcion_snapshot, foto_url_snapshot, talla_real_snapshot, origen)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [
         taxId,
         codigo,
         talla,
         eanOriginal,
         cantidad,
-        Boolean(producto),
-        producto?.descripcion ?? null,
+        Boolean(producto.rows[0]),
+        producto.rows[0]?.descripcion ?? null,
         urlFotoMinuscula(codigo),
+        regla.rows[0]?.talla_real ?? null,
         origen,
       ]
     )

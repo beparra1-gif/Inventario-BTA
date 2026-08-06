@@ -135,7 +135,16 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
         ) : (
           <div className="lista-capturas">
             {agrupado.map((item) => {
-              const tallaUnica = item.talla === '01';
+              // Talla real traducida por reglas_talla (ej. "44"), no el
+              // dígito crudo del código de barra (ej. "07"). Solo se cae a
+              // "Talla única" cuando el maestro no tiene una traducción
+              // real para ese código+talla_cruda "01" — no todo "01" es
+              // talla única, depende del artículo (ver data/maestros/README.md).
+              const etiquetaTalla = item.tallaReal
+                ? `Talla ${item.tallaReal}`
+                : item.talla === '01'
+                  ? 'Talla única'
+                  : `Talla ${item.talla} (sin traducir)`;
               return (
                 <div className="item-captura" key={`${item.codigo}-${item.talla}`}>
                   <img
@@ -154,7 +163,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
                   />
                   <div className="detalle">
                     <div className="codigo">
-                      {item.codigo} · {tallaUnica ? 'Talla única' : `Talla ${item.talla}`}
+                      {item.codigo} · {etiquetaTalla}
                     </div>
                     <div className="descripcion">{item.descripcion || 'Artículo no reconocido'}</div>
                     <span className={`badge ${item.reconocido ? 'badge-ok' : 'badge-error'}`} style={{ marginTop: 4 }}>

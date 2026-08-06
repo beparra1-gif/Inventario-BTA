@@ -97,7 +97,7 @@ router.get('/:id/resumen', manejarAsync(async (req, res) => {
       [id]
     ),
     pool.query(
-      `SELECT c.codigo, c.talla, c.cantidad, c.reconocido, c.descripcion_snapshot AS descripcion
+      `SELECT c.codigo, c.talla, c.cantidad, c.reconocido, c.descripcion_snapshot AS descripcion, c.talla_real_snapshot AS "tallaReal"
        FROM capturas c
        JOIN taxes t ON t.id = c.tax_id
        WHERE t.inventario_id = $1`,
