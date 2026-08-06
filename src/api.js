@@ -77,6 +77,7 @@ export const api = {
   crearPerfilComoAdmin: (inventarioId, adminId, alias, nombre) =>
     post('/api/participantes/admin', { inventarioId, adminId, alias, nombre }),
   eliminarParticipante: (id, adminId) => solicitar(`/api/participantes/${id}?adminId=${adminId}`, { method: 'DELETE' }),
+  regenerarClaveParticipante: (id, adminId) => post(`/api/participantes/${id}/regenerar-clave`, { adminId }),
   resumenParticipante: (participanteId) => solicitar(`/api/participantes/${participanteId}/resumen`),
 
   abrirTax: (participanteId, numeroTax) => post('/api/taxes', { participanteId, numeroTax }),

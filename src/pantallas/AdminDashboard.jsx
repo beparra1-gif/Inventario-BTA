@@ -233,6 +233,23 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     }
   }
 
+  async function regenerarClave(perfil) {
+    if (
+      perfil.clave &&
+      !window.confirm(`Esto genera una clave nueva para ${perfil.nombre || perfil.alias} — la anterior deja de funcionar. ¿Seguro?`)
+    ) {
+      return;
+    }
+    try {
+      const r = await api.regenerarClaveParticipante(perfil.id, admin.id);
+      cargarPerfiles(inventario.id);
+      setClavesGeneradas((actuales) => [...actuales, { nombre: perfil.nombre, alias: perfil.alias, clave: r.clave }]);
+      mostrarToast('Clave nueva generada', 'ok');
+    } catch {
+      mostrarToast('No se pudo generar la clave', 'error');
+    }
+  }
+
   async function quitarPerfil(perfil) {
     const unidades = (resumen?.participantes ?? [])
       .filter((p) => p.id === perfil.id)
@@ -708,8 +725,19 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                     {perfiles.map((p) => (
                       <div key={p.id} className="chip" style={{ margin: '0 6px 6px 0', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
                         {p.nombre ? `${p.nombre} (${p.alias})` : p.alias}
-                        {p.clave && <strong style={{ letterSpacing: 1 }}> · clave {p.clave}</strong>}
+                        {p.clave ? (
+                          <strong style={{ letterSpacing: 1 }}> · clave {p.clave}</strong>
+                        ) : (
+                          <span style={{ color: 'var(--texto-tenue)' }}> · sin clave visible</span>
+                        )}
                         {' '}· tax {p.tax_min}-{p.tax_max}
+                        <button
+                          onClick={() => regenerarClave(p)}
+                          title={p.clave ? 'Generar una clave nueva' : 'Esta clave es de antes de poder verse — genera una nueva'}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: 0 }}
+                        >
+                          ↻
+                        </button>
                         {inventario.estado === 'abierto' && (
                           <button onClick={() => quitarPerfil(p)} title="Quitar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: 0 }}>
                             <IconoEliminar tamano={13} />

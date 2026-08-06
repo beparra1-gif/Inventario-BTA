@@ -100,6 +100,26 @@ router.post('/admin', manejarAsync(async (req, res) => {
   }
 }));
 
+// El admin resetea la clave de alguien (perdida, olvidada, o de un perfil
+// creado antes de que la clave quedara guardada en texto — ver migración
+// 005) sin tener que borrar el perfil completo y perder todo lo que ya
+// capturó: solo cambia la clave, el resto queda intacto.
+router.post('/:id/regenerar-clave', manejarAsync(async (req, res) => {
+  const adminId = Number(req.body?.adminId);
+  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
+  const id = Number(req.params.id);
+  const claveEnClaro = generarClaveProvisoria();
+  const claveHash = await hashClave(claveEnClaro);
+  const resultado = await pool.query(
+    'UPDATE participantes SET clave_hash = $1, clave_texto = $2 WHERE id = $3 RETURNING *',
+    [claveHash, claveEnClaro, id]
+  );
+  if (!resultado.rows.length) return res.status(404).json({ error: 'participante_no_encontrado' });
+  res.json({ ...sinClaveHash(resultado.rows[0]), clave: claveEnClaro });
+}));
+
 // El admin quita a alguien del roster — se lleva sus taxes/capturas
 // (ON DELETE CASCADE) porque el alias deja de existir, así que si esa
 // persona ya había capturado algo hay que avisarle antes de confirmar
