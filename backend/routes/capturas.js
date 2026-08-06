@@ -20,6 +20,34 @@ async function obtenerTaxConInventario(taxId) {
   return rows[0] ?? null;
 }
 
+// Avisa al admin (mientras esté mirando este inventario) cada vez que un
+// capturador suma otros UMBRAL artículos no reconocidos en total — no en
+// cada uno, para no inundarlo de alertas si la persona sigue escaneando
+// cosas que genuinamente no están en el maestro.
+const UMBRAL_ALERTA_ERRORES = 5;
+
+async function revisarAlertaErrores(io, tax) {
+  const { rows } = await pool.query(
+    `SELECT p.alias, p.nombre,
+            COALESCE(SUM(c.cantidad) FILTER (WHERE c.reconocido = false), 0)::int AS total_no_reconocidas
+     FROM participantes p
+     LEFT JOIN taxes t ON t.participante_id = p.id
+     LEFT JOIN capturas c ON c.tax_id = t.id
+     WHERE p.id = $1
+     GROUP BY p.id`,
+    [tax.participante_id]
+  );
+  const total = rows[0]?.total_no_reconocidas ?? 0;
+  if (total > 0 && total % UMBRAL_ALERTA_ERRORES === 0) {
+    io.to(`inventario:${tax.inventario_id}`).emit('alerta:capturador-errores', {
+      participanteId: tax.participante_id,
+      alias: rows[0].alias,
+      nombre: rows[0].nombre,
+      totalErrores: total,
+    });
+  }
+}
+
 router.get('/', manejarAsync(async (req, res) => {
   const taxId = Number(req.query.taxId);
   if (!Number.isInteger(taxId)) return res.status(400).json({ error: 'taxId_requerido' });
@@ -86,6 +114,7 @@ router.post('/', manejarAsync(async (req, res) => {
   ).rows[0];
 
   req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:nueva', nueva);
+  if (!nueva.reconocido) await revisarAlertaErrores(req.app.locals.io, tax);
   res.status(201).json(nueva);
 }));
 

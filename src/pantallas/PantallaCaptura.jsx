@@ -5,6 +5,8 @@ import { useEscanerCodigoBarras } from '../hooks/useEscanerCodigoBarras.js';
 import { IconoEscanear, IconoCerrar, IconoCheck, IconoAlerta, IconoEliminar } from '../componentes/Iconos.jsx';
 import { FOTO_PLACEHOLDER } from '../utilidades/fotoPlaceholder.js';
 import { EncabezadoInventario } from '../componentes/EncabezadoInventario.jsx';
+import { sonarExito, sonarError, sonarEncolado } from '../utilidades/feedback.js';
+import { useColaOffline } from '../hooks/useColaOffline.js';
 // Mismas funciones puras que usa el backend (sin dependencias de Node),
 // reusadas acá tal cual para no duplicar lógica ni arriesgar que el cliente
 // se desincronice del servidor — ver backend/utils/ean13.js y fotos.js.
@@ -36,8 +38,28 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState(null);
   const [valorEdicion, setValorEdicion] = useState('');
+  const [enLinea, setEnLinea] = useState(navigator.onLine);
 
   const taxCerrado = tax.estado === 'cerrado';
+
+  useEffect(() => {
+    const alConectar = () => setEnLinea(true);
+    const alDesconectar = () => setEnLinea(false);
+    window.addEventListener('online', alConectar);
+    window.addEventListener('offline', alDesconectar);
+    return () => {
+      window.removeEventListener('online', alConectar);
+      window.removeEventListener('offline', alDesconectar);
+    };
+  }, []);
+
+  // Si crearCaptura falla por falta de conexión (no porque el servidor la
+  // rechace), la captura queda encolada acá en vez de perderse, y se manda
+  // sola apenas vuelva la señal.
+  const { cola, encolar } = useColaOffline(async (item) => {
+    const nueva = await api.crearCaptura(item);
+    setCapturas((actuales) => [nueva, ...actuales]);
+  });
 
   useEffect(() => {
     cargarCapturas();
@@ -54,12 +76,23 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
 
   const agrupado = useMemo(() => agruparCapturas(capturas), [capturas]);
 
-  function manejarErrorCaptura(error) {
+  // error.status solo existe si el servidor alcanzó a responder (ver
+  // src/api.js) — si no está, fetch nunca llegó a ningún lado: es falta de
+  // conexión, no un rechazo real, así que se encola en vez de mostrarse
+  // como error.
+  function manejarErrorCaptura(error, itemParaEncolar) {
+    if (!error.status && itemParaEncolar) {
+      encolar(itemParaEncolar);
+      sonarEncolado();
+      mostrarToast('Sin conexión — se guardó en el celular y se sube sola cuando vuelva la señal', 'error');
+      return;
+    }
     if (error.info?.error === 'inventario_cerrado') {
       mostrarToast('El admin cerró este inventario — ya no se puede seguir capturando', 'error');
     } else {
       mostrarToast('No se pudo guardar, intenta de nuevo', 'error');
     }
+    sonarError();
   }
 
   // Escaneo: sin paso de validación aparte antes de guardar — la respuesta
@@ -67,12 +100,14 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
   // igual para el snapshot), así se ahorra una vuelta de red por escaneo y
   // la captura queda lo más rápida posible.
   async function agregarPorEscaneo(codigo, talla, ean13Original) {
+    const item = { taxId: tax.id, codigo, talla, ean13Original, cantidad: 1, origen: 'scan' };
     try {
-      const nueva = await api.crearCaptura({ taxId: tax.id, codigo, talla, ean13Original, cantidad: 1, origen: 'scan' });
+      const nueva = await api.crearCaptura(item);
       setCapturas((actuales) => [nueva, ...actuales]);
       mostrarToast(nueva.reconocido ? nueva.descripcion_snapshot : 'No reconocido — se guardó igual', nueva.reconocido ? 'ok' : 'error');
+      nueva.reconocido ? sonarExito() : sonarError();
     } catch (error) {
-      manejarErrorCaptura(error);
+      manejarErrorCaptura(error, item);
     }
   }
 
@@ -108,23 +143,26 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
   async function confirmarManual() {
     const resultado = parseArticuloManual(codigoManual, tallaManual);
     if (!resultado.valido) return;
+    const item = {
+      taxId: tax.id,
+      codigo: resultado.codigoProducto,
+      talla: resultado.tallaCruda,
+      ean13Original: null,
+      cantidad: 1,
+      origen: 'manual',
+    };
     try {
-      const nueva = await api.crearCaptura({
-        taxId: tax.id,
-        codigo: resultado.codigoProducto,
-        talla: resultado.tallaCruda,
-        ean13Original: null,
-        cantidad: 1,
-        origen: 'manual',
-      });
+      const nueva = await api.crearCaptura(item);
       setCapturas((actuales) => [nueva, ...actuales]);
       mostrarToast(nueva.reconocido ? nueva.descripcion_snapshot : 'No reconocido — se guardó igual', nueva.reconocido ? 'ok' : 'error');
+      nueva.reconocido ? sonarExito() : sonarError();
+    } catch (error) {
+      manejarErrorCaptura(error, item);
+    } finally {
       setCodigoManual('');
       setTallaManual('');
       setPreviaManual(null);
       setMostrarManual(false);
-    } catch (error) {
-      manejarErrorCaptura(error);
     }
   }
 
@@ -181,6 +219,13 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
     <div className="pantalla" style={{ paddingBottom: 100 }}>
       <EncabezadoInventario tienda={acceso.tienda} inventario={acceso.inventario} />
       <div className="contenedor">
+        {(!enLinea || cola.length > 0) && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#FEF9C3', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: '#92400E' }}>
+            <IconoAlerta tamano={16} />
+            {!enLinea ? 'Sin conexión' : 'Reconectando'} — {cola.length} captura{cola.length === 1 ? '' : 's'} pendiente{cola.length === 1 ? '' : 's'} de subir, no se pierden.
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '1.3em', fontWeight: 700 }}>Tax {tax.numero_tax}</h1>

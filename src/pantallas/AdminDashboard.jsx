@@ -122,13 +122,18 @@ export function AdminDashboard({ admin, onSalir }) {
     unirseAInventario(inventario.id);
     const socket = obtenerSocket();
     const refrescar = () => cargarResumen(inventario.id);
+    const alAlertaErrores = ({ alias, nombre, totalErrores }) => {
+      mostrarToast(`${nombre || alias} lleva ${totalErrores} artículos sin reconocer — puede que valga la pena revisarlo`, 'error');
+    };
     ['captura:nueva', 'captura:actualizada', 'captura:eliminada', 'tax:abierto', 'tax:cerrado'].forEach((evento) =>
       socket.on(evento, refrescar)
     );
+    socket.on('alerta:capturador-errores', alAlertaErrores);
     return () => {
       ['captura:nueva', 'captura:actualizada', 'captura:eliminada', 'tax:abierto', 'tax:cerrado'].forEach((evento) =>
         socket.off(evento, refrescar)
       );
+      socket.off('alerta:capturador-errores', alAlertaErrores);
     };
   }, [inventario]);
 
