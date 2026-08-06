@@ -9,6 +9,11 @@ function sinClaveHash({ clave_hash, ...resto }) {
   return resto;
 }
 
+async function obtenerAdmin(adminId) {
+  if (!Number.isInteger(adminId)) return null;
+  return (await pool.query('SELECT rol FROM admins WHERE id = $1', [adminId])).rows[0] ?? null;
+}
+
 // Admin: crea un inventario para una tienda. Ya no pide/genera una clave
 // compartida — cada capturador tiene la suya propia (ver routes/participantes.js,
 // migración 004). El acceso de participantes es solo EDP + su alias/clave personal.
@@ -37,15 +42,30 @@ router.post('/', manejarAsync(async (req, res) => {
 
 // Admin: "revisar inventarios realizados" — busca por número, glosa o EDP de
 // tienda, trae todos los estados (no solo abiertos). Sin query trae los
-// últimos 30.
+// últimos 30. Un admin normal solo ve los inventarios que él mismo creó; el
+// superadmin ve todos (ver también /recientes, misma regla).
 router.get('/', manejarAsync(async (req, res) => {
+  const adminId = Number(req.query.adminId);
+  const admin = await obtenerAdmin(adminId);
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
   const busqueda = String(req.query.q ?? '').trim();
-  const condicion = busqueda ? `WHERE i.numero_inventario ILIKE $1 OR t.glosa ILIKE $1 OR CAST(i.edp AS TEXT) LIKE $1` : '';
-  const parametros = busqueda ? [`%${busqueda}%`] : [];
+  const condiciones = [];
+  const parametros = [];
+  if (busqueda) {
+    parametros.push(`%${busqueda}%`);
+    condiciones.push(`(i.numero_inventario ILIKE $${parametros.length} OR t.glosa ILIKE $${parametros.length} OR CAST(i.edp AS TEXT) LIKE $${parametros.length})`);
+  }
+  if (admin.rol !== 'superadmin') {
+    parametros.push(adminId);
+    condiciones.push(`i.creado_por_admin_id = $${parametros.length}`);
+  }
+  const whereSql = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+
   const resultado = await pool.query(
     `SELECT i.id, i.numero_inventario, i.edp, i.estado, i.creado_en, i.cerrado_en, t.glosa AS tienda_glosa
      FROM inventarios i JOIN tiendas t ON t.edp = i.edp
-     ${condicion}
+     ${whereSql}
      ORDER BY i.creado_en DESC LIMIT 30`,
     parametros
   );
@@ -56,7 +76,18 @@ router.get('/', manejarAsync(async (req, res) => {
 // de unidades capturadas y quiénes participaron, sin tener que entrar a
 // "Revisar inventarios" y buscar uno por uno.
 router.get('/recientes', manejarAsync(async (req, res) => {
+  const adminId = Number(req.query.adminId);
+  const admin = await obtenerAdmin(adminId);
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
   const limite = Math.min(Number(req.query.limite) || 2, 10);
+  const parametros = [limite];
+  let filtroCreador = '';
+  if (admin.rol !== 'superadmin') {
+    parametros.push(adminId);
+    filtroCreador = 'WHERE i.creado_por_admin_id = $2';
+  }
+
   const resultado = await pool.query(
     `SELECT i.id, i.numero_inventario, i.edp, i.estado, i.creado_en, i.cerrado_en, t.glosa AS tienda_glosa,
             COALESCE(cap.total_unidades, 0)::int AS total_unidades,
@@ -71,9 +102,10 @@ router.get('/recientes', manejarAsync(async (req, res) => {
        SELECT array_agg(DISTINCT COALESCE(p.nombre, p.alias)) AS nombres
        FROM participantes p WHERE p.inventario_id = i.id
      ) personas ON true
+     ${filtroCreador}
      ORDER BY i.creado_en DESC
      LIMIT $1`,
-    [limite]
+    parametros
   );
   res.json(resultado.rows);
 }));
@@ -93,11 +125,18 @@ router.get('/abierto/:edp', manejarAsync(async (req, res) => {
 
 // Perfiles de captura ya creados para este inventario (por el admin de
 // antemano o por participantes que ya entraron) — se usa tanto para que un
-// participante elija/reconecte su perfil como para el roster del admin.
+// participante elija/reconecte su perfil como para el roster del admin. Con
+// ?adminId= de un admin válido, también trae la clave en texto (antes solo
+// se podía ver una vez al crearla, ahora el admin la puede consultar
+// siempre — ver migración 005).
 router.get('/:id/participantes', manejarAsync(async (req, res) => {
   const id = Number(req.params.id);
+  const admin = await obtenerAdmin(Number(req.query.adminId));
+  const columnas = admin
+    ? 'id, alias, nombre, tax_min, tax_max, clave_texto AS clave'
+    : 'id, alias, nombre, tax_min, tax_max';
   const resultado = await pool.query(
-    'SELECT id, alias, nombre, tax_min, tax_max FROM participantes WHERE inventario_id = $1 ORDER BY alias',
+    `SELECT ${columnas} FROM participantes WHERE inventario_id = $1 ORDER BY alias`,
     [id]
   );
   res.json(resultado.rows);

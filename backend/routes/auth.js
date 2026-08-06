@@ -97,6 +97,70 @@ router.post('/admins', manejarAsync(async (req, res) => {
   }
 }));
 
+// Superadmin: lista de todos los admins creados — los admins normales no
+// pueden ver esto (ver frontend), pero igual se revalida acá por si acaso.
+router.get('/admins', manejarAsync(async (req, res) => {
+  const solicitanteId = Number(req.query.solicitanteId);
+  const solicitante = (await pool.query('SELECT rol FROM admins WHERE id = $1', [solicitanteId])).rows[0];
+  if (solicitante?.rol !== 'superadmin') return res.status(403).json({ error: 'requiere_superadmin' });
+
+  const { rows } = await pool.query('SELECT * FROM admins ORDER BY creado_en');
+  res.json(rows.map(datosPublicos));
+}));
+
+// Edita nombre (cualquiera sobre sí mismo) y/o rol (solo el superadmin, y
+// solo sobre otra cuenta). Así cada uno puede completar su propio perfil sin
+// necesitar al superadmin, pero solo el superadmin reasigna roles.
+router.put('/admins/:id', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const solicitanteId = Number(req.body?.solicitanteId);
+  const solicitante = (await pool.query('SELECT * FROM admins WHERE id = $1', [solicitanteId])).rows[0];
+  if (!solicitante) return res.status(403).json({ error: 'no_autorizado' });
+
+  const esSuperadmin = solicitante.rol === 'superadmin';
+  if (!esSuperadmin && solicitante.id !== id) return res.status(403).json({ error: 'no_autorizado' });
+
+  const campos = [];
+  const valores = [];
+  if (req.body?.nombre !== undefined) {
+    campos.push(`nombre = $${campos.length + 1}`);
+    valores.push(String(req.body.nombre).trim() || null);
+  }
+  if (esSuperadmin && solicitante.id !== id && ['admin', 'superadmin'].includes(req.body?.rol)) {
+    campos.push(`rol = $${campos.length + 1}`);
+    valores.push(req.body.rol);
+  }
+  if (!campos.length) return res.status(400).json({ error: 'nada_para_actualizar' });
+
+  valores.push(id);
+  const resultado = await pool.query(
+    `UPDATE admins SET ${campos.join(', ')} WHERE id = $${valores.length} RETURNING *`,
+    valores
+  );
+  if (!resultado.rows.length) return res.status(404).json({ error: 'admin_no_encontrado' });
+  res.json(datosPublicos(resultado.rows[0]));
+}));
+
+// Solo el superadmin borra admins — no puede borrarse a sí mismo ni dejar la
+// cuenta sin ningún superadmin (se quedaría sin nadie que pueda arreglarlo).
+router.delete('/admins/:id', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const solicitanteId = Number(req.query.solicitanteId);
+  const solicitante = (await pool.query('SELECT rol FROM admins WHERE id = $1', [solicitanteId])).rows[0];
+  if (solicitante?.rol !== 'superadmin') return res.status(403).json({ error: 'requiere_superadmin' });
+  if (id === solicitanteId) return res.status(400).json({ error: 'no_puedes_borrarte_a_ti_mismo' });
+
+  const objetivo = (await pool.query('SELECT rol FROM admins WHERE id = $1', [id])).rows[0];
+  if (!objetivo) return res.status(404).json({ error: 'admin_no_encontrado' });
+  if (objetivo.rol === 'superadmin') {
+    const { rows } = await pool.query(`SELECT COUNT(*)::int AS total FROM admins WHERE rol = 'superadmin'`);
+    if (rows[0].total <= 1) return res.status(409).json({ error: 'ultimo_superadmin' });
+  }
+
+  await pool.query('DELETE FROM admins WHERE id = $1', [id]);
+  res.status(204).end();
+}));
+
 router.post('/cambiar-password', manejarAsync(async (req, res) => {
   const adminId = Number(req.body?.adminId);
   const passwordActual = String(req.body?.passwordActual ?? '');

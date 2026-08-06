@@ -6,10 +6,10 @@ import { IconoDescargar, IconoTienda, IconoEliminar } from '../componentes/Icono
 import { derivarAlias, aliasDisponible } from '../utilidades/alias.js';
 import { formatearFecha } from '../utilidades/fecha.js';
 
-export function AdminDashboard({ admin, onSalir }) {
+export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const mostrarToast = useToast();
 
-  // 'menu' | 'crear' | 'revisar' | 'gestionar'
+  // 'menu' | 'crear' | 'revisar' | 'gestionar' | 'admins' | 'perfil'
   const [vista, setVista] = useState('menu');
 
   // --- Crear inventario (wizard) ---
@@ -41,6 +41,16 @@ export function AdminDashboard({ admin, onSalir }) {
   const [rolNuevoAdmin, setRolNuevoAdmin] = useState('admin');
   const [adminInvitado, setAdminInvitado] = useState(null);
 
+  // --- Administradores (superadmin) ---
+  const [listaAdmins, setListaAdmins] = useState([]);
+
+  // --- Mi perfil ---
+  const [nombrePerfil, setNombrePerfil] = useState(admin.nombre ?? '');
+  const [guardandoPerfil, setGuardandoPerfil] = useState(false);
+  const [passwordActualPerfil, setPasswordActualPerfil] = useState('');
+  const [passwordNuevaPerfil, setPasswordNuevaPerfil] = useState('');
+  const [cambiandoPasswordPerfil, setCambiandoPasswordPerfil] = useState(false);
+
   const [subiendoTiendas, setSubiendoTiendas] = useState(false);
   const [subiendoProductos, setSubiendoProductos] = useState(false);
   const [progresoProductos, setProgresoProductos] = useState(null);
@@ -58,7 +68,7 @@ export function AdminDashboard({ admin, onSalir }) {
   useEffect(() => {
     if (vista !== 'revisar') return undefined;
     const timeout = setTimeout(async () => {
-      try { setResultadosRevisar(await api.buscarInventarios(busquedaRevisar.trim())); } catch { /* se reintenta */ }
+      try { setResultadosRevisar(await api.buscarInventarios(busquedaRevisar.trim(), admin.id)); } catch { /* se reintenta */ }
     }, 250);
     return () => clearTimeout(timeout);
   }, [busquedaRevisar, vista]);
@@ -66,6 +76,11 @@ export function AdminDashboard({ admin, onSalir }) {
   useEffect(() => {
     cargarRecientes();
   }, []);
+
+  useEffect(() => {
+    if (vista === 'admins') cargarAdmins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vista]);
 
   useEffect(() => {
     unirseAdmin();
@@ -149,7 +164,7 @@ export function AdminDashboard({ admin, onSalir }) {
   }
 
   async function cargarPerfiles(id) {
-    try { setPerfiles(await api.participantesDeInventario(id)); } catch { /* se reintenta con el próximo refresco */ }
+    try { setPerfiles(await api.participantesDeInventario(id, admin.id)); } catch { /* se reintenta con el próximo refresco */ }
   }
 
   function agregarNombrePendiente() {
@@ -307,12 +322,73 @@ export function AdminDashboard({ admin, onSalir }) {
   }
 
   async function cargarRecientes() {
-    try { setRecientes(await api.inventariosRecientes(2)); } catch { /* se reintenta con el próximo refresco */ }
+    try { setRecientes(await api.inventariosRecientes(admin.id, 2)); } catch { /* se reintenta con el próximo refresco */ }
+  }
+
+  async function cargarAdmins() {
+    try { setListaAdmins(await api.listarAdmins(admin.id)); } catch { mostrarToast('No se pudo cargar la lista de administradores', 'error'); }
+  }
+
+  async function cambiarRolAdmin(a, nuevoRol) {
+    try {
+      await api.actualizarAdmin(a.id, admin.id, { rol: nuevoRol });
+      cargarAdmins();
+      mostrarToast('Rol actualizado', 'ok');
+    } catch {
+      mostrarToast('No se pudo actualizar el rol', 'error');
+    }
+  }
+
+  async function borrarAdmin(a) {
+    if (!window.confirm(`Esto borra la cuenta de ${a.nombre || a.email}. No se puede deshacer. ¿Seguro?`)) return;
+    try {
+      await api.eliminarAdmin(a.id, admin.id);
+      setListaAdmins((actuales) => actuales.filter((x) => x.id !== a.id));
+      mostrarToast('Administrador borrado', 'ok');
+    } catch (error) {
+      mostrarToast(
+        error.info?.error === 'ultimo_superadmin' ? 'No puedes borrar al único superadmin que queda' : 'No se pudo borrar el administrador',
+        'error'
+      );
+    }
+  }
+
+  async function guardarPerfil() {
+    setGuardandoPerfil(true);
+    try {
+      const actualizado = await api.actualizarAdmin(admin.id, admin.id, { nombre: nombrePerfil });
+      onActualizarAdmin({ ...admin, nombre: actualizado.nombre });
+      mostrarToast('Perfil actualizado', 'ok');
+    } catch {
+      mostrarToast('No se pudo actualizar el perfil', 'error');
+    } finally {
+      setGuardandoPerfil(false);
+    }
+  }
+
+  async function cambiarPasswordPerfil() {
+    if (!passwordActualPerfil || passwordNuevaPerfil.length < 8) return;
+    setCambiandoPasswordPerfil(true);
+    try {
+      await api.cambiarPassword(admin.id, passwordActualPerfil, passwordNuevaPerfil);
+      setPasswordActualPerfil('');
+      setPasswordNuevaPerfil('');
+      mostrarToast('Clave actualizada', 'ok');
+    } catch {
+      mostrarToast('Clave actual incorrecta', 'error');
+    } finally {
+      setCambiandoPasswordPerfil(false);
+    }
   }
 
   const panelAdminInvitar = admin.rol === 'superadmin' && (
     <div className="tarjeta">
-      <h3 style={{ marginTop: 0 }}>Agregar administrador</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <h3 style={{ margin: 0 }}>Administradores</h3>
+        <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista(vista === 'admins' ? 'menu' : 'admins')}>
+          {vista === 'admins' ? 'Ocultar lista' : 'Ver todos'}
+        </button>
+      </div>
       <label className="etiqueta">Correo</label>
       <input className="campo" type="email" value={emailNuevoAdmin} onChange={(e) => setEmailNuevoAdmin(e.target.value)} />
       <label className="etiqueta">Nombre</label>
@@ -334,7 +410,7 @@ export function AdminDashboard({ admin, onSalir }) {
     </div>
   );
 
-  const panelMaestros = (
+  const panelMaestros = admin.rol === 'superadmin' && (
     <div className="tarjeta">
       <h3 style={{ marginTop: 0 }}>Maestros</h3>
       <label className="etiqueta">Tiendas (.xlsx)</label>
@@ -356,7 +432,10 @@ export function AdminDashboard({ admin, onSalir }) {
       <div className="contenedor-ancho">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h1 style={{ margin: 0, fontSize: '1.4em' }}>Panel de administración</h1>
-          <button className="btn-texto" onClick={onSalir}>Salir</button>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <button className="btn-texto" onClick={() => setVista('perfil')}>Mi perfil</button>
+            <button className="btn-texto" onClick={onSalir}>Salir</button>
+          </div>
         </div>
 
         <div className="grilla-admin">
@@ -403,6 +482,96 @@ export function AdminDashboard({ admin, onSalir }) {
                   </div>
                 )}
               </>
+            )}
+
+            {vista === 'admins' && admin.rol === 'superadmin' && (
+              <div className="tarjeta">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={{ margin: 0 }}>Administradores</h3>
+                  <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista('menu')}>‹ Volver</button>
+                </div>
+                {listaAdmins.map((a) => (
+                  <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--borde)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{a.nombre || '(sin nombre)'}{a.id === admin.id ? ' · tú' : ''}</div>
+                      <div style={{ fontSize: 12, color: 'var(--texto-tenue)' }}>{a.email}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                      <select
+                        className="campo"
+                        style={{ marginBottom: 0, width: 'auto', fontSize: 12, padding: '6px 8px' }}
+                        value={a.rol}
+                        disabled={a.id === admin.id}
+                        onChange={(e) => cambiarRolAdmin(a, e.target.value)}
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="superadmin">Superadmin</option>
+                      </select>
+                      {a.id !== admin.id && (
+                        <button className="btn-texto" style={{ padding: 0, color: '#B91C1C', display: 'flex' }} title="Borrar" onClick={() => borrarAdmin(a)}>
+                          <IconoEliminar tamano={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {listaAdmins.length === 0 && (
+                  <p style={{ textAlign: 'center', color: 'var(--texto-tenue)', fontSize: 13 }}>Cargando...</p>
+                )}
+              </div>
+            )}
+
+            {vista === 'perfil' && (
+              <div className="tarjeta">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={{ margin: 0 }}>Mi perfil</h3>
+                  <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista('menu')}>‹ Volver</button>
+                </div>
+
+                <label className="etiqueta">Correo</label>
+                <p style={{ margin: '0 0 12px', fontSize: 14 }}>
+                  {admin.email} <span className="chip" style={{ marginLeft: 6 }}>{admin.rol}</span>
+                </p>
+
+                <label className="etiqueta">Nombre</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="campo" style={{ marginBottom: 0 }} value={nombrePerfil} onChange={(e) => setNombrePerfil(e.target.value)} />
+                  <button
+                    className="btn btn-secundario btn-chico"
+                    onClick={guardarPerfil}
+                    disabled={guardandoPerfil || nombrePerfil.trim() === (admin.nombre ?? '')}
+                  >
+                    Guardar
+                  </button>
+                </div>
+
+                <div style={{ marginTop: 20, borderTop: '1px solid var(--borde)', paddingTop: 16 }}>
+                  <label className="etiqueta">Cambiar clave de acceso</label>
+                  <input
+                    className="campo"
+                    type="password"
+                    placeholder="Clave actual"
+                    value={passwordActualPerfil}
+                    onChange={(e) => setPasswordActualPerfil(e.target.value)}
+                  />
+                  <input
+                    className="campo"
+                    type="password"
+                    placeholder="Clave nueva (mínimo 8 caracteres)"
+                    value={passwordNuevaPerfil}
+                    onChange={(e) => setPasswordNuevaPerfil(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && cambiarPasswordPerfil()}
+                  />
+                  <button
+                    className="btn btn-secundario btn-chico"
+                    style={{ width: '100%' }}
+                    onClick={cambiarPasswordPerfil}
+                    disabled={!passwordActualPerfil || passwordNuevaPerfil.length < 8 || cambiandoPasswordPerfil}
+                  >
+                    {cambiandoPasswordPerfil ? 'Guardando...' : 'Cambiar clave'}
+                  </button>
+                </div>
+              </div>
             )}
 
             {vista === 'crear' && (
@@ -522,7 +691,7 @@ export function AdminDashboard({ admin, onSalir }) {
                   {clavesGeneradas.length > 0 && (
                     <div style={{ marginTop: 16, background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12 }}>
                       <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--texto-tenue)', fontWeight: 700, marginBottom: 8 }}>
-                        Claves para repartir (solo se muestran una vez)
+                        Claves recién generadas para repartir
                       </div>
                       {clavesGeneradas.map((c) => (
                         <div key={c.alias} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
@@ -538,7 +707,9 @@ export function AdminDashboard({ admin, onSalir }) {
                     <label className="etiqueta">Personal de captura</label>
                     {perfiles.map((p) => (
                       <div key={p.id} className="chip" style={{ margin: '0 6px 6px 0', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
-                        {p.nombre ? `${p.nombre} (${p.alias})` : p.alias} · tax {p.tax_min}-{p.tax_max}
+                        {p.nombre ? `${p.nombre} (${p.alias})` : p.alias}
+                        {p.clave && <strong style={{ letterSpacing: 1 }}> · clave {p.clave}</strong>}
+                        {' '}· tax {p.tax_min}-{p.tax_max}
                         {inventario.estado === 'abierto' && (
                           <button onClick={() => quitarPerfil(p)} title="Quitar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: 0 }}>
                             <IconoEliminar tamano={13} />

@@ -292,8 +292,14 @@ label.etiqueta {
 }
 
 .item-captura .detalle { flex: 1; min-width: 0; }
-.item-captura .codigo { font-weight: 700; font-size: 14px; }
-.item-captura .descripcion { font-size: 12px; color: var(--texto-tenue); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-captura .codigo {
+  font-weight: 700;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item-captura .descripcion-inline { font-weight: 400; color: var(--texto-tenue); }
 
 /* ---------- Botón flotante de escaneo/foco ---------- */
 

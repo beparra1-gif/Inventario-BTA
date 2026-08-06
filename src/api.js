@@ -50,19 +50,26 @@ export const api = {
     post('/api/auth/cambiar-password', { adminId, passwordActual, passwordNueva }),
   invitarAdmin: (solicitanteId, email, nombre, rol) =>
     post('/api/auth/admins', { solicitanteId, email, nombre, rol }),
+  listarAdmins: (solicitanteId) => solicitar(`/api/auth/admins?solicitanteId=${solicitanteId}`),
+  actualizarAdmin: (id, solicitanteId, cambios) =>
+    solicitar(`/api/auth/admins/${id}`, { method: 'PUT', body: JSON.stringify({ solicitanteId, ...cambios }) }),
+  eliminarAdmin: (id, solicitanteId) =>
+    solicitar(`/api/auth/admins/${id}?solicitanteId=${solicitanteId}`, { method: 'DELETE' }),
 
   buscarTiendas: (q) => solicitar(`/api/tiendas${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   obtenerTienda: (edp) => solicitar(`/api/tiendas/${edp}`),
 
   crearInventario: (datos) => post('/api/inventarios', datos),
-  buscarInventarios: (q) => solicitar(`/api/inventarios${q ? `?q=${encodeURIComponent(q)}` : ''}`),
-  inventariosRecientes: (limite = 2) => solicitar(`/api/inventarios/recientes?limite=${limite}`),
+  buscarInventarios: (q, adminId) => solicitar(`/api/inventarios?adminId=${adminId}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+  inventariosRecientes: (adminId, limite = 2) => solicitar(`/api/inventarios/recientes?adminId=${adminId}&limite=${limite}`),
   inventarioAbiertoPorEdp: (edp) => solicitar(`/api/inventarios/abierto/${edp}`),
   cerrarInventario: (id) => post(`/api/inventarios/${id}/cerrar`, {}),
   reabrirInventario: (id, adminId) => post(`/api/inventarios/${id}/reabrir`, { adminId }),
   eliminarInventario: (id, adminId) => solicitar(`/api/inventarios/${id}?adminId=${adminId}`, { method: 'DELETE' }),
   resumenInventario: (id) => solicitar(`/api/inventarios/${id}/resumen`),
-  participantesDeInventario: (id) => solicitar(`/api/inventarios/${id}/participantes`),
+  // Con adminId trae también la clave en texto de cada perfil (solo admins).
+  participantesDeInventario: (id, adminId) =>
+    solicitar(`/api/inventarios/${id}/participantes${adminId ? `?adminId=${adminId}` : ''}`),
   urlExportarInventario: (id) => `${URL_BASE}/api/inventarios/${id}/exportar`,
 
   loginParticipante: (inventarioId, alias, clave) =>

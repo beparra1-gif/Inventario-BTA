@@ -98,13 +98,14 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
   // Escaneo: sin paso de validación aparte antes de guardar — la respuesta
   // de crearCaptura ya trae reconocido/descripción (el backend las calcula
   // igual para el snapshot), así se ahorra una vuelta de red por escaneo y
-  // la captura queda lo más rápida posible.
+  // la captura queda lo más rápida posible. Sin notificación con el nombre
+  // del producto (interrumpía el ritmo de escaneo): el sonido ya avisa si
+  // quedó reconocido o no, y el nombre aparece en la lista de abajo.
   async function agregarPorEscaneo(codigo, talla, ean13Original) {
     const item = { taxId: tax.id, codigo, talla, ean13Original, cantidad: 1, origen: 'scan' };
     try {
       const nueva = await api.crearCaptura(item);
       setCapturas((actuales) => [nueva, ...actuales]);
-      mostrarToast(nueva.reconocido ? nueva.descripcion_snapshot : 'No reconocido — se guardó igual', nueva.reconocido ? 'ok' : 'error');
       nueva.reconocido ? sonarExito() : sonarError();
     } catch (error) {
       manejarErrorCaptura(error, item);
@@ -154,7 +155,6 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
     try {
       const nueva = await api.crearCaptura(item);
       setCapturas((actuales) => [nueva, ...actuales]);
-      mostrarToast(nueva.reconocido ? nueva.descripcion_snapshot : 'No reconocido — se guardó igual', nueva.reconocido ? 'ok' : 'error');
       nueva.reconocido ? sonarExito() : sonarError();
     } catch (error) {
       manejarErrorCaptura(error, item);
@@ -281,8 +281,8 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
                   <div className="detalle">
                     <div className="codigo">
                       {formatearCodigo(item.codigo)} · {etiquetaTalla(item)}
+                      <span className="descripcion-inline"> · {item.descripcion || 'Artículo no reconocido'}</span>
                     </div>
-                    <div className="descripcion">{item.descripcion || 'Artículo no reconocido'}</div>
                   </div>
                   {!taxCerrado && seEstaEditando ? (
                     <input

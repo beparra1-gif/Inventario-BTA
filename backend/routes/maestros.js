@@ -10,11 +10,13 @@ const subida = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 
 
 // Sin sesiones en esta app: el superadmin manda su propio id en el form y se
 // revalida el rol contra la BD antes de dejarlo tocar el maestro completo.
+// Solo superadmin: un admin normal cargando un maestro mal armado afecta a
+// todas las tiendas/inventarios, no solo a los suyos.
 async function exigirAdmin(req, res) {
   const adminId = Number(req.body?.adminId);
   const admin = (await pool.query('SELECT rol FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) {
-    res.status(403).json({ error: 'requiere_admin' });
+  if (!admin || admin.rol !== 'superadmin') {
+    res.status(403).json({ error: 'requiere_superadmin' });
     return null;
   }
   return admin;

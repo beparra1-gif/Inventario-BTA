@@ -83,7 +83,7 @@ function PanelAdmin({ onVolver }) {
   const [admin, setAdmin] = useEstadoPersistente('inv-bta:admin', null);
   if (!admin) return <AdminLogin onLogin={setAdmin} onVolver={onVolver} />;
   if (admin.debeCambiarPassword) return <CambiarPassword admin={admin} onListo={setAdmin} />;
-  return <AdminDashboard admin={admin} onSalir={() => setAdmin(null)} />;
+  return <AdminDashboard admin={admin} onSalir={() => setAdmin(null)} onActualizarAdmin={setAdmin} />;
 }
 
 function App() {

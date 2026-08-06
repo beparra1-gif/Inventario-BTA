@@ -7,16 +7,15 @@ const router = Router();
 
 const RANGO_TAX = 100;
 
-function sinClaveHash({ clave_hash, ...resto }) {
+function sinClaveHash({ clave_hash, clave_texto, ...resto }) {
   return resto;
 }
 
 // Alias nuevo -> siguiente rango de 100 disponible (1-100, 101-200, ...) +
 // clave numérica propia (para que cada persona tenga la suya, no una
 // compartida). Alias existente -> se reusa tal cual (la clave ya asignada
-// no se toca) para poder seguir capturando desde otro dispositivo.
-// `claveEnClaro` en el resultado viene null si el perfil ya existía —
-// la clave anterior no se puede recuperar, solo se muestra al crearla.
+// no se toca) para poder seguir capturando desde otro dispositivo — se
+// devuelve su clave_texto guardada, no una nueva.
 async function obtenerOCrearParticipante(cliente, inventarioId, alias, nombre = null) {
   const existente = (
     await cliente.query('SELECT * FROM participantes WHERE inventario_id = $1 AND alias = $2', [
@@ -24,7 +23,7 @@ async function obtenerOCrearParticipante(cliente, inventarioId, alias, nombre = 
       alias,
     ])
   ).rows[0];
-  if (existente) return { participante: existente, claveEnClaro: null };
+  if (existente) return { participante: existente, claveEnClaro: existente.clave_texto };
 
   const { rows } = await cliente.query(
     'SELECT COUNT(*)::int AS total FROM participantes WHERE inventario_id = $1',
@@ -38,9 +37,9 @@ async function obtenerOCrearParticipante(cliente, inventarioId, alias, nombre = 
 
   const participante = (
     await cliente.query(
-      `INSERT INTO participantes (inventario_id, alias, nombre, tax_min, tax_max, clave_hash)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [inventarioId, alias, nombre, taxMin, taxMax, claveHash]
+      `INSERT INTO participantes (inventario_id, alias, nombre, tax_min, tax_max, clave_hash, clave_texto)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [inventarioId, alias, nombre, taxMin, taxMax, claveHash, claveEnClaro]
     )
   ).rows[0];
 
