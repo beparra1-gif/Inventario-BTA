@@ -61,12 +61,19 @@ async function insertarLoteReglas(lote) {
   );
 }
 
-export async function importarProductos() {
-  console.log(`Leyendo ${RUTA_CSV}...`);
-  const flujo = readline.createInterface({
-    input: fs.createReadStream(RUTA_CSV, { encoding: 'latin1' }),
-    crlfDelay: Infinity,
-  });
+// `buffer`: cuando el superadmin sube el .csv desde el panel admin
+// (routes/maestros.js) en vez de leerlo de RUTA_CSV — esa ruta es una unidad
+// de red (I:\) que no existe en el servidor desplegado. `onProgreso(n)` es
+// opcional, para emitir avance por Socket.io en vez de solo console.log
+// (593k filas puede tardar); se llama cada 50.000 filas procesadas.
+export async function importarProductos({ buffer, onProgreso } = {}) {
+  console.log(`Leyendo ${buffer ? 'archivo subido' : RUTA_CSV}...`);
+  const flujo = buffer
+    ? buffer.toString('latin1').split(/\r?\n/)
+    : readline.createInterface({
+        input: fs.createReadStream(RUTA_CSV, { encoding: 'latin1' }),
+        crlfDelay: Infinity,
+      });
 
   let esEncabezado = true;
   let procesadas = 0;
@@ -99,7 +106,10 @@ export async function importarProductos() {
       await insertarLoteReglas(loteReglas);
       loteProductos = [];
       loteReglas = [];
-      if (procesadas % 50000 === 0) console.log(`  ${procesadas} filas procesadas...`);
+      if (procesadas % 50000 === 0) {
+        console.log(`  ${procesadas} filas procesadas...`);
+        onProgreso?.(procesadas);
+      }
     }
   }
 

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useToast } from '../contexto/ToastContext.jsx';
-import { obtenerSocket, unirseAInventario } from '../socket.js';
+import { obtenerSocket, unirseAInventario, unirseAdmin } from '../socket.js';
 import { IconoDescargar, IconoTienda } from '../componentes/Iconos.jsx';
 
 export function AdminDashboard({ admin, onSalir }) {
@@ -14,6 +14,12 @@ export function AdminDashboard({ admin, onSalir }) {
   const [inventario, setInventario] = useState(null);
   const [resumen, setResumen] = useState(null);
 
+  const [subiendoTiendas, setSubiendoTiendas] = useState(false);
+  const [subiendoProductos, setSubiendoProductos] = useState(false);
+  const [progresoProductos, setProgresoProductos] = useState(null);
+  const inputTiendasRef = useRef(null);
+  const inputProductosRef = useRef(null);
+
   useEffect(() => {
     if (busqueda.trim().length < 2) { setResultados([]); return undefined; }
     const timeout = setTimeout(async () => {
@@ -21,6 +27,61 @@ export function AdminDashboard({ admin, onSalir }) {
     }, 250);
     return () => clearTimeout(timeout);
   }, [busqueda]);
+
+  useEffect(() => {
+    unirseAdmin();
+    const socket = obtenerSocket();
+    const alProgreso = ({ procesadas }) => setProgresoProductos(procesadas);
+    const alCompletar = (resumenImport) => {
+      setSubiendoProductos(false);
+      setProgresoProductos(null);
+      mostrarToast(`Productos: ${resumenImport.procesadas} filas importadas, ${resumenImport.omitidas} omitidas`, 'ok');
+    };
+    const alError = () => {
+      setSubiendoProductos(false);
+      setProgresoProductos(null);
+      mostrarToast('Error importando el maestro de productos', 'error');
+    };
+    socket.on('maestros:productos:progreso', alProgreso);
+    socket.on('maestros:productos:completado', alCompletar);
+    socket.on('maestros:productos:error', alError);
+    return () => {
+      socket.off('maestros:productos:progreso', alProgreso);
+      socket.off('maestros:productos:completado', alCompletar);
+      socket.off('maestros:productos:error', alError);
+    };
+  }, []);
+
+  async function subirMaestroTiendas(evento) {
+    const archivo = evento.target.files?.[0];
+    if (!archivo) return;
+    setSubiendoTiendas(true);
+    try {
+      const r = await api.subirMaestroTiendas(admin.id, archivo);
+      mostrarToast(`Tiendas: ${r.insertadas} nuevas, ${r.actualizadas} actualizadas, ${r.omitidas} omitidas`, 'ok');
+    } catch {
+      mostrarToast('No se pudo importar el maestro de tiendas', 'error');
+    } finally {
+      setSubiendoTiendas(false);
+      if (inputTiendasRef.current) inputTiendasRef.current.value = '';
+    }
+  }
+
+  async function subirMaestroProductos(evento) {
+    const archivo = evento.target.files?.[0];
+    if (!archivo) return;
+    setSubiendoProductos(true);
+    setProgresoProductos(0);
+    try {
+      await api.subirMaestroProductos(admin.id, archivo);
+    } catch {
+      setSubiendoProductos(false);
+      setProgresoProductos(null);
+      mostrarToast('No se pudo iniciar la importación de productos', 'error');
+    } finally {
+      if (inputProductosRef.current) inputProductosRef.current.value = '';
+    }
+  }
 
   useEffect(() => {
     if (!inventario) return undefined;
@@ -80,6 +141,7 @@ export function AdminDashboard({ admin, onSalir }) {
         </div>
 
         <div className="grilla-admin">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="tarjeta">
             <label className="etiqueta">Buscar tienda</label>
             <input className="campo" placeholder="Nombre o EDP" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
@@ -135,6 +197,38 @@ export function AdminDashboard({ admin, onSalir }) {
                 )}
               </div>
             )}
+          </div>
+
+          <div className="tarjeta">
+            <h3 style={{ marginTop: 0 }}>Maestros</h3>
+
+            <label className="etiqueta">Tiendas (.xlsx)</label>
+            <input
+              ref={inputTiendasRef}
+              className="campo"
+              type="file"
+              accept=".xlsx"
+              disabled={subiendoTiendas}
+              onChange={subirMaestroTiendas}
+            />
+            {subiendoTiendas && <p style={{ fontSize: 13, color: 'var(--texto-tenue)', marginTop: -8 }}>Importando…</p>}
+
+            <label className="etiqueta">Productos + reglas de talla (.csv)</label>
+            <input
+              ref={inputProductosRef}
+              className="campo"
+              type="file"
+              accept=".csv"
+              disabled={subiendoProductos}
+              onChange={subirMaestroProductos}
+            />
+            {subiendoProductos && (
+              <p style={{ fontSize: 13, color: 'var(--texto-tenue)', marginTop: -8 }}>
+                Importando… {progresoProductos ? `${progresoProductos.toLocaleString('es-CL')} filas procesadas` : 'empezando'}
+                {' '}(puede tardar unos minutos, son ~600 mil filas — puedes seguir usando el panel mientras corre).
+              </p>
+            )}
+          </div>
           </div>
 
           <div className="tarjeta">

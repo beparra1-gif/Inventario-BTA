@@ -22,6 +22,23 @@ function post(ruta, body) {
   return solicitar(ruta, { method: 'POST', body: JSON.stringify(body) });
 }
 
+// Sin el header Content-Type: fetch lo arma solo con el boundary correcto
+// cuando el body es un FormData.
+async function subirArchivo(ruta, adminId, archivo) {
+  const formulario = new FormData();
+  formulario.append('adminId', adminId);
+  formulario.append('archivo', archivo);
+  const respuesta = await fetch(`${URL_BASE}${ruta}`, { method: 'POST', body: formulario });
+  const cuerpo = await respuesta.json();
+  if (!respuesta.ok) {
+    const error = new Error(cuerpo?.error || 'error_de_red');
+    error.status = respuesta.status;
+    error.info = cuerpo;
+    throw error;
+  }
+  return cuerpo;
+}
+
 export const api = {
   urlBase: URL_BASE,
 
@@ -58,4 +75,7 @@ export const api = {
   actualizarCaptura: (id, cantidad) =>
     solicitar(`/api/capturas/${id}`, { method: 'PUT', body: JSON.stringify({ cantidad }) }),
   eliminarCaptura: (id) => solicitar(`/api/capturas/${id}`, { method: 'DELETE' }),
+
+  subirMaestroTiendas: (adminId, archivo) => subirArchivo('/api/maestros/tiendas', adminId, archivo),
+  subirMaestroProductos: (adminId, archivo) => subirArchivo('/api/maestros/productos', adminId, archivo),
 };

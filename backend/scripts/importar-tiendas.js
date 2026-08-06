@@ -52,13 +52,17 @@ function valorCelda(fila, indice, nombreColumna) {
   return String(valor).trim();
 }
 
-export async function importarTiendas() {
-  console.log(`Leyendo ${RUTA_XLSX} (hoja "${NOMBRE_HOJA}")...`);
-  const wb = XLSX.readFile(RUTA_XLSX, { cellDates: false });
-  const hoja = wb.Sheets[NOMBRE_HOJA];
+// `buffer`: cuando el superadmin sube el .xlsx desde el panel admin
+// (routes/maestros.js) en vez de leerlo de RUTA_XLSX — esa ruta es un disco
+// local (OneDrive del usuario) que no existe en el servidor desplegado.
+export async function importarTiendas({ buffer, nombreHoja = NOMBRE_HOJA } = {}) {
+  const origen = buffer ? 'archivo subido' : RUTA_XLSX;
+  console.log(`Leyendo ${origen} (hoja "${nombreHoja}")...`);
+  const wb = buffer ? XLSX.read(buffer, { type: 'buffer', cellDates: false }) : XLSX.readFile(RUTA_XLSX, { cellDates: false });
+  const hoja = wb.Sheets[nombreHoja];
   if (!hoja) {
     throw new Error(
-      `No existe la hoja "${NOMBRE_HOJA}" en ${RUTA_XLSX}. Hojas disponibles: ${wb.SheetNames.join(', ')}`
+      `No existe la hoja "${nombreHoja}" en ${origen}. Hojas disponibles: ${wb.SheetNames.join(', ')}`
     );
   }
 

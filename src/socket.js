@@ -13,3 +13,7 @@ export function obtenerSocket() {
 export function unirseAInventario(inventarioId) {
   obtenerSocket().emit('unirse-inventario', inventarioId);
 }
+
+export function unirseAdmin() {
+  obtenerSocket().emit('unirse-admin');
+}

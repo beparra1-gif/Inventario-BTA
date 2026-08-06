@@ -32,6 +32,11 @@ io.on('connection', (socket) => {
   socket.on('unirse-inventario', (inventarioId) => {
     socket.join(`inventario:${inventarioId}`);
   });
+  // El panel admin se suscribe acá para ver el avance de la carga de
+  // productos_maestro (593k filas) mientras corre en segundo plano.
+  socket.on('unirse-admin', () => {
+    socket.join('admin');
+  });
 });
 
 app.use(cors(corsOptions));
