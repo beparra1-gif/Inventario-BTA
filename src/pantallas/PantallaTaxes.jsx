@@ -49,6 +49,15 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
     }
   }
 
+  async function solicitarModificacion() {
+    try {
+      await api.solicitarModificacion(participante.id, null);
+      mostrarToast('Se avisó al administrador', 'ok');
+    } catch {
+      mostrarToast('No se pudo avisar al administrador', 'error');
+    }
+  }
+
   function errorInventarioCerrado(error) {
     mostrarToast(
       error.info?.error === 'inventario_cerrado' ? 'El admin cerró este inventario — ya no se puede seguir capturando' : 'No se pudo completar la acción',
@@ -136,9 +145,16 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
               )}
 
               {inventarioCerrado && (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: 'var(--texto-tenue)' }}>
-                  <IconoAlerta tamano={16} />
-                  El admin cerró este inventario — podés ver lo capturado pero no modificarlo hasta que lo reabra.
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: 'var(--texto-tenue)' }}>
+                  <IconoAlerta tamano={16} style={{ flexShrink: 0 }} />
+                  <span style={{ flex: 1, minWidth: 200 }}>
+                    {acceso.inventario.verificado_en
+                      ? 'Este inventario está cerrado y verificado por el admin — podés ver lo capturado pero no modificarlo.'
+                      : 'El admin cerró este inventario — podés ver lo capturado pero no modificarlo hasta que lo reabra.'}
+                  </span>
+                  <button className="btn-texto" style={{ padding: 0, fontSize: 12, flexShrink: 0 }} onClick={solicitarModificacion}>
+                    Solicitar modificación
+                  </button>
                 </div>
               )}
 
@@ -167,7 +183,9 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
                             {inventarioCerrado ? 'Ver' : 'Continuar'}
                           </button>
                         ) : inventarioCerrado ? (
-                          <span style={{ fontSize: 11, color: 'var(--texto-suave)', textTransform: 'uppercase', fontWeight: 700, flexShrink: 0 }}>Cerrado</span>
+                          <button className="btn-texto" style={{ padding: 0, flexShrink: 0 }} onClick={() => onAbrirTax({ id: t.tax_id, numero_tax: t.numero_tax, estado: t.estado })}>
+                            Ver
+                          </button>
                         ) : (
                           <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
                             <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => modificar(t)}>Modificar</button>

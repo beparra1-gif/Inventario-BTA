@@ -149,15 +149,25 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     const alAlertaErrores = ({ alias, nombre, totalErrores }) => {
       mostrarToast(`${nombre || alias} lleva ${totalErrores} artículos sin reconocer — puede que valga la pena revisarlo`, 'error');
     };
+    const alSolicitudModificar = ({ alias, nombre, numeroTax }) => {
+      mostrarToast(
+        numeroTax
+          ? `${nombre || alias} necesita modificar el tax ${numeroTax} — reábrelo desde "Progreso por participante"`
+          : `${nombre || alias} necesita que le reabras algo — revisa "Progreso por participante"`,
+        'error'
+      );
+    };
     ['captura:nueva', 'captura:actualizada', 'captura:eliminada', 'tax:abierto', 'tax:cerrado'].forEach((evento) =>
       socket.on(evento, refrescar)
     );
     socket.on('alerta:capturador-errores', alAlertaErrores);
+    socket.on('solicitud:modificar', alSolicitudModificar);
     return () => {
       ['captura:nueva', 'captura:actualizada', 'captura:eliminada', 'tax:abierto', 'tax:cerrado'].forEach((evento) =>
         socket.off(evento, refrescar)
       );
       socket.off('alerta:capturador-errores', alAlertaErrores);
+      socket.off('solicitud:modificar', alSolicitudModificar);
     };
   }, [inventario]);
 
@@ -312,6 +322,15 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
       mostrarToast('Inventario reabierto', 'ok');
     } catch {
       mostrarToast('No se pudo reabrir el inventario', 'error');
+    }
+  }
+
+  async function verificarInventario() {
+    try {
+      setInventario(await api.verificarInventario(inventario.id, admin.id));
+      mostrarToast('Inventario marcado como verificado', 'ok');
+    } catch {
+      mostrarToast('No se pudo marcar como verificado', 'error');
     }
   }
 
@@ -744,7 +763,15 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                     <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista('menu')}>‹ Volver</button>
                   </div>
                   <p style={{ fontSize: 13, margin: '0 0 12px' }}>
-                    Inventario <strong>{inventario.numero_inventario}</strong> · estado <strong>{inventario.estado}</strong>
+                    Inventario <strong>{inventario.numero_inventario}</strong> · estado{' '}
+                    <strong>{inventario.estado}</strong>
+                    {inventario.estado !== 'abierto' && (
+                      inventario.verificado_en ? (
+                        <span style={{ color: 'var(--exito)', fontWeight: 700 }}> · verificado</span>
+                      ) : (
+                        <span style={{ color: 'var(--advertencia)', fontWeight: 700 }}> · sin verificar</span>
+                      )
+                    )}
                   </p>
 
                   <a className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8, textDecoration: 'none' }} href={api.urlExportarInventario(inventario.id)}>
@@ -753,7 +780,14 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                   {inventario.estado === 'abierto' ? (
                     <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={cerrarInventario}>Cerrar inventario</button>
                   ) : (
-                    <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={reabrirInventario}>Reabrir para corregir algo</button>
+                    <>
+                      <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={reabrirInventario}>Reabrir para corregir algo</button>
+                      {!inventario.verificado_en && (
+                        <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={verificarInventario}>
+                          Marcar como verificado
+                        </button>
+                      )}
+                    </>
                   )}
                   <button className="btn btn-secundario btn-chico" style={{ width: '100%', color: '#B91C1C' }} onClick={() => borrarInventario(inventario)}>
                     Borrar inventario

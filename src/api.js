@@ -66,6 +66,7 @@ export const api = {
   obtenerInventario: (id) => solicitar(`/api/inventarios/${id}`),
   cerrarInventario: (id) => post(`/api/inventarios/${id}/cerrar`, {}),
   reabrirInventario: (id, adminId) => post(`/api/inventarios/${id}/reabrir`, { adminId }),
+  verificarInventario: (id, adminId) => post(`/api/inventarios/${id}/verificar`, { adminId }),
   eliminarInventario: (id, adminId) => solicitar(`/api/inventarios/${id}?adminId=${adminId}`, { method: 'DELETE' }),
   resumenInventario: (id) => solicitar(`/api/inventarios/${id}/resumen`),
   // Con adminId trae también la clave en texto de cada perfil (solo admins).
@@ -80,6 +81,8 @@ export const api = {
   eliminarParticipante: (id, adminId) => solicitar(`/api/participantes/${id}?adminId=${adminId}`, { method: 'DELETE' }),
   regenerarClaveParticipante: (id, adminId) => post(`/api/participantes/${id}/regenerar-clave`, { adminId }),
   resumenParticipante: (participanteId) => solicitar(`/api/participantes/${participanteId}/resumen`),
+  solicitarModificacion: (participanteId, numeroTax) =>
+    post(`/api/participantes/${participanteId}/solicitar-modificacion`, { numeroTax }),
 
   abrirTax: (participanteId, numeroTax) => post('/api/taxes', { participanteId, numeroTax }),
   cerrarTax: (id) => post(`/api/taxes/${id}/cerrar`, {}),

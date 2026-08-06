@@ -28,9 +28,10 @@ function etiquetaTalla(item) {
   return `${item.talla}*`;
 }
 
-export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolver }) {
+export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVolver }) {
   const mostrarToast = useToast();
   const [capturas, setCapturas] = useState([]);
+  const [misTax, setMisTax] = useState([]);
   const [mostrarManual, setMostrarManual] = useState(false);
   const [codigoManual, setCodigoManual] = useState('');
   const [tallaManual, setTallaManual] = useState('');
@@ -74,9 +75,20 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
     });
   });
 
+  // Si el usuario cambia de tax con el panel de navegación (ver más abajo)
+  // el componente sigue montado con props nuevas — hay que volver a cargar
+  // para ese tax puntual en vez de arrastrar lo del anterior.
   useEffect(() => {
     cargarCapturas();
-  }, []);
+    setEditando(null);
+  }, [tax.id]);
+
+  // Lista de todos los tax del participante, para el panel de navegación —
+  // así puede saltar de uno a otro a revisar/corroborar sin tener que
+  // volver a la pantalla de inicio cada vez.
+  useEffect(() => {
+    api.resumenParticipante(participante.id).then((r) => setMisTax(r.taxes)).catch(() => {});
+  }, [participante.id, tax.id]);
 
   async function cargarCapturas() {
     setCargando(true);
@@ -220,10 +232,20 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
   async function cerrarTax() {
     if (!window.confirm(`¿Cerrar tax ${tax.numero_tax} con ${totalUnidades} unidad${totalUnidades === 1 ? '' : 'es'}? Ya no vas a poder agregar más ahí a menos que lo reabras.`)) return;
     try {
-      const actualizado = await api.cerrarTax(tax.id);
-      onCerrarTax(actualizado);
+      await api.cerrarTax(tax.id);
+      mostrarToast('Tax cerrado', 'ok');
+      onVolver();
     } catch {
       mostrarToast('No se pudo cerrar el tax', 'error');
+    }
+  }
+
+  async function solicitarModificacion() {
+    try {
+      await api.solicitarModificacion(participante.id, tax.numero_tax);
+      mostrarToast('Se avisó al administrador', 'ok');
+    } catch {
+      mostrarToast('No se pudo avisar al administrador', 'error');
     }
   }
 
@@ -265,7 +287,42 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolv
         {inventarioCerrado && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: 'var(--texto-tenue)' }}>
             <IconoAlerta tamano={16} />
-            El admin cerró este inventario — podés ver lo capturado pero no modificarlo hasta que lo reabra.
+            {acceso.inventario.verificado_en
+              ? 'Este inventario está cerrado y verificado por el admin — podés ver lo capturado pero no modificarlo.'
+              : 'El admin cerró este inventario — podés ver lo capturado pero no modificarlo hasta que lo reabra.'}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8 }}>
+          <button className="btn-texto" style={{ padding: 0 }} onClick={onVolver}>
+            ‹ Inicio (ver totales)
+          </button>
+          {inventarioCerrado && (
+            <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={solicitarModificacion}>
+              Solicitar modificación al admin
+            </button>
+          )}
+        </div>
+
+        {misTax.length > 1 && (
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6, marginBottom: 10 }}>
+            {misTax.map((t) => (
+              <button
+                key={t.tax_id}
+                onClick={() => onCambiarTax({ id: t.tax_id, numero_tax: t.numero_tax, estado: t.estado })}
+                className="btn-chico"
+                style={{
+                  flexShrink: 0,
+                  borderRadius: 8,
+                  border: '1px solid var(--borde)',
+                  background: t.tax_id === tax.id ? 'var(--primario)' : 'var(--fondo-tarjeta)',
+                  color: t.tax_id === tax.id ? 'white' : 'var(--texto)',
+                  fontWeight: 700,
+                }}
+              >
+                Tax {t.numero_tax}
+              </button>
+            ))}
           </div>
         )}
 

@@ -175,4 +175,24 @@ router.get('/:id/resumen', manejarAsync(async (req, res) => {
   });
 }));
 
+// El capturador pide que el admin le reabra algo — típicamente porque el
+// inventario está cerrado (modo solo lectura) y necesita corregir un tax.
+// No cambia nada en la base, solo avisa por Socket.io a quien esté mirando
+// ese inventario en el panel admin en ese momento.
+router.post('/:id/solicitar-modificacion', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const numeroTax = Number.isInteger(Number(req.body?.numeroTax)) && req.body?.numeroTax != null ? Number(req.body.numeroTax) : null;
+
+  const participante = (await pool.query('SELECT * FROM participantes WHERE id = $1', [id])).rows[0];
+  if (!participante) return res.status(404).json({ error: 'participante_no_encontrado' });
+
+  req.app.locals.io.to(`inventario:${participante.inventario_id}`).emit('solicitud:modificar', {
+    participanteId: participante.id,
+    alias: participante.alias,
+    nombre: participante.nombre,
+    numeroTax,
+  });
+  res.status(204).end();
+}));
+
 export default router;

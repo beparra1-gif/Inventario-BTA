@@ -181,10 +181,30 @@ router.post('/:id/reabrir', manejarAsync(async (req, res) => {
 
   const id = Number(req.params.id);
   const resultado = await pool.query(
-    `UPDATE inventarios SET estado = 'abierto', cerrado_en = NULL WHERE id = $1 AND estado IN ('cerrado', 'exportado') RETURNING *`,
+    // Se limpia verificado_en: si se reabre para corregir algo, ya no
+    // refleja el estado actual — hay que volver a marcarlo verificado.
+    `UPDATE inventarios SET estado = 'abierto', cerrado_en = NULL, verificado_en = NULL
+     WHERE id = $1 AND estado IN ('cerrado', 'exportado') RETURNING *`,
     [id]
   );
   if (!resultado.rows.length) return res.status(409).json({ error: 'inventario_no_estaba_cerrado' });
+  res.json(sinClaveHash(resultado.rows[0]));
+}));
+
+// El admin marca el inventario cerrado como revisado/conforme — no cambia
+// el estado (sigue "cerrado"), solo deja constancia de que ya se corroboró
+// contra lo capturado. Se limpia solo si lo vuelven a reabrir (ver arriba).
+router.post('/:id/verificar', manejarAsync(async (req, res) => {
+  const adminId = Number(req.body?.adminId);
+  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
+  const id = Number(req.params.id);
+  const resultado = await pool.query(
+    `UPDATE inventarios SET verificado_en = now() WHERE id = $1 AND estado IN ('cerrado', 'exportado') RETURNING *`,
+    [id]
+  );
+  if (!resultado.rows.length) return res.status(409).json({ error: 'inventario_no_esta_cerrado' });
   res.json(sinClaveHash(resultado.rows[0]));
 }));
 

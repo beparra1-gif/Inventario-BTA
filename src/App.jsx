@@ -57,7 +57,7 @@ function FlujoCaptura({ onIrAdmin }) {
     );
   }
 
-  if (!tax || tax.estado === 'cerrado') {
+  if (!tax) {
     return (
       <PantallaTaxes
         acceso={acceso}
@@ -68,12 +68,16 @@ function FlujoCaptura({ onIrAdmin }) {
     );
   }
 
+  // Un tax "cerrado" también se renderiza acá (no vuelve solo al inicio):
+  // PantallaCaptura ya sabe mostrarse en modo solo lectura para ese caso —
+  // así el panel de navegación puede saltar a ver/corroborar cualquier tax,
+  // esté abierto o cerrado, sin que la pantalla lo rebote de vuelta.
   return (
     <PantallaCaptura
       acceso={acceso}
       participante={participante}
       tax={tax}
-      onCerrarTax={setTax}
+      onCambiarTax={setTax}
       onVolver={() => setTax(null)}
     />
   );
