@@ -90,6 +90,19 @@ router.post('/:id/reabrir', manejarAsync(async (req, res) => {
   res.json(tax);
 }));
 
+// El propio capturador reinicia su tax en curso (borra todas las capturas
+// pero deja el tax abierto, sin tener que pasar por el admin) para volver a
+// empezar ese número desde cero si se equivocó feo.
+router.delete('/:id/capturas', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const tax = (await pool.query('SELECT inventario_id FROM taxes WHERE id = $1', [id])).rows[0];
+  if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
+
+  await pool.query('DELETE FROM capturas WHERE tax_id = $1', [id]);
+  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:reiniciado', { id });
+  res.status(204).end();
+}));
+
 // El admin borra un tax completo (sus capturas se van con él, ON DELETE
 // CASCADE) para que el mismo participante lo vuelva a capturar desde cero
 // — libera el número para que se pueda reabrir de nuevo.

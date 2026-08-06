@@ -55,25 +55,25 @@ export const api = {
   obtenerTienda: (edp) => solicitar(`/api/tiendas/${edp}`),
 
   crearInventario: (datos) => post('/api/inventarios', datos),
+  buscarInventarios: (q) => solicitar(`/api/inventarios${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   inventarioAbiertoPorEdp: (edp) => solicitar(`/api/inventarios/abierto/${edp}`),
-  verificarClaveInventario: (id, clave) => post(`/api/inventarios/${id}/verificar-clave`, { clave }),
   cerrarInventario: (id) => post(`/api/inventarios/${id}/cerrar`, {}),
   reabrirInventario: (id, adminId) => post(`/api/inventarios/${id}/reabrir`, { adminId }),
   resumenInventario: (id) => solicitar(`/api/inventarios/${id}/resumen`),
   participantesDeInventario: (id) => solicitar(`/api/inventarios/${id}/participantes`),
   urlExportarInventario: (id) => `${URL_BASE}/api/inventarios/${id}/exportar`,
 
-  unirseComoParticipante: (inventarioId, clave, alias) =>
-    post('/api/participantes', { inventarioId, clave, alias }),
+  loginParticipante: (inventarioId, alias, clave) =>
+    post('/api/participantes/login', { inventarioId, alias, clave }),
   crearPerfilComoAdmin: (inventarioId, adminId, alias, nombre) =>
     post('/api/participantes/admin', { inventarioId, adminId, alias, nombre }),
   eliminarParticipante: (id, adminId) => solicitar(`/api/participantes/${id}?adminId=${adminId}`, { method: 'DELETE' }),
-  taxesDeParticipante: (participanteId) => solicitar(`/api/participantes/${participanteId}/taxes`),
   resumenParticipante: (participanteId) => solicitar(`/api/participantes/${participanteId}/resumen`),
 
   abrirTax: (participanteId, numeroTax) => post('/api/taxes', { participanteId, numeroTax }),
   cerrarTax: (id) => post(`/api/taxes/${id}/cerrar`, {}),
   reabrirTax: (id, adminId) => post(`/api/taxes/${id}/reabrir`, { adminId }),
+  reiniciarTax: (id) => solicitar(`/api/taxes/${id}/capturas`, { method: 'DELETE' }),
   eliminarTax: (id, adminId) => solicitar(`/api/taxes/${id}?adminId=${adminId}`, { method: 'DELETE' }),
 
   validarArticulo: (codigo, talla) =>

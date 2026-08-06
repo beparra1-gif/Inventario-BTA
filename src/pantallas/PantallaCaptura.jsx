@@ -4,7 +4,7 @@ import { useToast } from '../contexto/ToastContext.jsx';
 import { useEscanerCodigoBarras } from '../hooks/useEscanerCodigoBarras.js';
 import { IconoEscanear, IconoCerrar, IconoCheck, IconoAlerta, IconoEliminar } from '../componentes/Iconos.jsx';
 import { FOTO_PLACEHOLDER } from '../utilidades/fotoPlaceholder.js';
-import { formatearFecha } from '../utilidades/fecha.js';
+import { EncabezadoInventario } from '../componentes/EncabezadoInventario.jsx';
 // Mismas funciones puras que usa el backend (sin dependencias de Node),
 // reusadas acá tal cual para no duplicar lógica ni arriesgar que el cliente
 // se desincronice del servidor — ver backend/utils/ean13.js y fotos.js.
@@ -164,28 +164,41 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
     }
   }
 
+  async function reiniciarTax() {
+    if (!window.confirm(`Esto borra las ${totalUnidades} unidades capturadas en este tax y empieza de cero. ¿Seguro?`)) return;
+    try {
+      await api.reiniciarTax(tax.id);
+      setCapturas([]);
+      mostrarToast('Tax reiniciado', 'ok');
+    } catch {
+      mostrarToast('No se pudo reiniciar el tax', 'error');
+    }
+  }
+
   const totalUnidades = agrupado.reduce((acc, i) => acc + i.cantidad, 0);
 
   return (
     <div className="pantalla" style={{ paddingBottom: 100 }}>
+      <EncabezadoInventario tienda={acceso.tienda} inventario={acceso.inventario} />
       <div className="contenedor">
-        <div style={{ textAlign: 'center', marginBottom: 8, fontSize: 11, color: 'var(--texto-tenue)' }}>
-          {acceso.tienda.edp} · {acceso.tienda.glosa}
-          {acceso.inventario.numero_inventario && <> · inv. {acceso.inventario.numero_inventario}</>}
-          {formatearFecha(acceso.inventario.creado_en) && <> · {formatearFecha(acceso.inventario.creado_en)}</>}
-        </div>
-
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '1.3em', fontWeight: 700 }}>Tax {tax.numero_tax}</h1>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--texto-tenue)' }}>
-              {participante.alias} · {totalUnidades} unidad{totalUnidades === 1 ? '' : 'es'}
+              {participante.nombre || participante.alias} · {totalUnidades} unidad{totalUnidades === 1 ? '' : 'es'}
             </p>
           </div>
           {!taxCerrado && (
-            <button className="btn btn-secundario btn-chico" onClick={cerrarTax}>
-              Cerrar tax
-            </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {totalUnidades > 0 && (
+                <button className="btn btn-secundario btn-chico" onClick={reiniciarTax} title="Borra todo y empieza de cero">
+                  Reiniciar
+                </button>
+              )}
+              <button className="btn btn-secundario btn-chico" onClick={cerrarTax}>
+                Cerrar tax
+              </button>
+            </div>
           )}
         </div>
 

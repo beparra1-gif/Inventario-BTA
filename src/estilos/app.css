@@ -85,6 +85,57 @@ button, input, select {
   .pantalla { padding-top: max(40px, env(safe-area-inset-top)); }
 }
 
+/* ---------- Header de contexto (tienda/inventario/fecha) ---------- */
+
+.encabezado-inv {
+  width: 100%;
+  max-width: 440px;
+  margin: calc(-1 * max(20px, env(safe-area-inset-top))) auto 16px;
+  padding: max(14px, env(safe-area-inset-top)) 18px 12px;
+  background: color-mix(in srgb, var(--fondo-tarjeta) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 0 0 18px 18px;
+  box-shadow: 0 1px 0 var(--borde), 0 4px 12px rgba(0, 0, 0, 0.04);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  text-align: center;
+}
+
+.encabezado-inv-fila {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--texto);
+}
+
+.encabezado-inv-tienda {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.encabezado-inv-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--texto-tenue);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.encabezado-inv-meta span:not(:last-child)::after {
+  content: '·';
+  margin-left: 8px;
+  color: var(--texto-suave);
+}
+
 .tarjeta {
   width: 100%;
   background: var(--fondo-tarjeta);

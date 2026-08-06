@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { ToastProvider } from './contexto/ToastContext.jsx';
+import { useEstadoPersistente } from './hooks/useEstadoPersistente.js';
 import { PantallaAcceso } from './pantallas/PantallaAcceso.jsx';
 import { PantallaParticipante } from './pantallas/PantallaParticipante.jsx';
 import { PantallaTaxes } from './pantallas/PantallaTaxes.jsx';
@@ -10,9 +10,9 @@ import { CambiarPassword } from './pantallas/CambiarPassword.jsx';
 import './estilos/app.css';
 
 function FlujoCaptura({ onIrAdmin }) {
-  const [acceso, setAcceso] = useState(null);
-  const [participante, setParticipante] = useState(null);
-  const [tax, setTax] = useState(null);
+  const [acceso, setAcceso] = useEstadoPersistente('inv-bta:acceso', null);
+  const [participante, setParticipante] = useEstadoPersistente('inv-bta:participante', null);
+  const [tax, setTax] = useEstadoPersistente('inv-bta:tax', null);
 
   if (!acceso) return <PantallaAcceso onAcceso={setAcceso} onIrAdmin={onIrAdmin} />;
 
@@ -44,14 +44,14 @@ function FlujoCaptura({ onIrAdmin }) {
 }
 
 function PanelAdmin({ onVolver }) {
-  const [admin, setAdmin] = useState(null);
+  const [admin, setAdmin] = useEstadoPersistente('inv-bta:admin', null);
   if (!admin) return <AdminLogin onLogin={setAdmin} onVolver={onVolver} />;
   if (admin.debeCambiarPassword) return <CambiarPassword admin={admin} onListo={setAdmin} />;
   return <AdminDashboard admin={admin} onSalir={() => setAdmin(null)} />;
 }
 
 function App() {
-  const [modoAdmin, setModoAdmin] = useState(false);
+  const [modoAdmin, setModoAdmin] = useEstadoPersistente('inv-bta:modo-admin', false);
 
   return (
     <ToastProvider>

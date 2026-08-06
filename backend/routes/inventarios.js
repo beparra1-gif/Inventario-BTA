@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import pool from '../db.js';
-import { hashClave, verificarClave, generarClaveProvisoria } from '../utils/claves.js';
 import { agruparCapturas, generarLineasExportacion, nombreArchivoExportacion } from '../utils/ean13.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
 
@@ -10,29 +9,25 @@ function sinClaveHash({ clave_hash, ...resto }) {
   return resto;
 }
 
-// Admin: crea un inventario para una tienda. La clave de acceso para
-// participantes se genera sola (PIN de 6 dígitos) salvo que el admin mande
-// una propia — se devuelve en claro *solo* en esta respuesta (después no
-// se puede recuperar, queda hasheada) para que el admin la comparta con su
-// equipo.
+// Admin: crea un inventario para una tienda. Ya no pide/genera una clave
+// compartida — cada capturador tiene la suya propia (ver routes/participantes.js,
+// migración 004). El acceso de participantes es solo EDP + su alias/clave personal.
 router.post('/', manejarAsync(async (req, res) => {
   const numeroInventario = String(req.body?.numeroInventario ?? '').trim();
   const edp = Number(req.body?.edp);
-  const claveEnClaro = req.body?.clave ? String(req.body.clave) : generarClaveProvisoria();
   const creadoPorAdminId = Number(req.body?.creadoPorAdminId);
 
   if (!numeroInventario || !Number.isInteger(edp) || !Number.isInteger(creadoPorAdminId)) {
     return res.status(400).json({ error: 'datos_incompletos' });
   }
 
-  const claveHash = await hashClave(claveEnClaro);
   try {
     const resultado = await pool.query(
-      `INSERT INTO inventarios (numero_inventario, edp, clave_hash, creado_por_admin_id)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [numeroInventario, edp, claveHash, creadoPorAdminId]
+      `INSERT INTO inventarios (numero_inventario, edp, creado_por_admin_id)
+       VALUES ($1, $2, $3) RETURNING *`,
+      [numeroInventario, edp, creadoPorAdminId]
     );
-    res.status(201).json({ ...sinClaveHash(resultado.rows[0]), clave: claveEnClaro });
+    res.status(201).json(sinClaveHash(resultado.rows[0]));
   } catch (error) {
     if (error.code === '23505') return res.status(409).json({ error: 'numero_inventario_ya_existe' });
     if (error.code === '23503') return res.status(400).json({ error: 'tienda_no_encontrada' });
@@ -40,7 +35,24 @@ router.post('/', manejarAsync(async (req, res) => {
   }
 }));
 
-// Participante: para saber si hay algo abierto en esa tienda antes de pedir la clave.
+// Admin: "revisar inventarios realizados" — busca por número, glosa o EDP de
+// tienda, trae todos los estados (no solo abiertos). Sin query trae los
+// últimos 30.
+router.get('/', manejarAsync(async (req, res) => {
+  const busqueda = String(req.query.q ?? '').trim();
+  const condicion = busqueda ? `WHERE i.numero_inventario ILIKE $1 OR t.glosa ILIKE $1 OR CAST(i.edp AS TEXT) LIKE $1` : '';
+  const parametros = busqueda ? [`%${busqueda}%`] : [];
+  const resultado = await pool.query(
+    `SELECT i.id, i.numero_inventario, i.edp, i.estado, i.creado_en, i.cerrado_en, t.glosa AS tienda_glosa
+     FROM inventarios i JOIN tiendas t ON t.edp = i.edp
+     ${condicion}
+     ORDER BY i.creado_en DESC LIMIT 30`,
+    parametros
+  );
+  res.json(resultado.rows);
+}));
+
+// Participante: para saber si hay algo abierto en esa tienda antes de mostrar el login.
 router.get('/abierto/:edp', manejarAsync(async (req, res) => {
   const edp = Number(req.params.edp);
   if (!Number.isInteger(edp)) return res.status(400).json({ error: 'edp_invalido' });
@@ -51,20 +63,6 @@ router.get('/abierto/:edp', manejarAsync(async (req, res) => {
   );
   if (!resultado.rows.length) return res.status(404).json({ error: 'sin_inventario_abierto' });
   res.json(sinClaveHash(resultado.rows[0]));
-}));
-
-router.post('/:id/verificar-clave', manejarAsync(async (req, res) => {
-  const id = Number(req.params.id);
-  const clave = String(req.body?.clave ?? '');
-
-  const resultado = await pool.query('SELECT * FROM inventarios WHERE id = $1', [id]);
-  const inventario = resultado.rows[0];
-  if (!inventario) return res.status(404).json({ error: 'inventario_no_encontrado' });
-
-  const valida = await verificarClave(clave, inventario.clave_hash);
-  if (!valida) return res.status(401).json({ error: 'clave_invalida' });
-
-  res.json(sinClaveHash(inventario));
 }));
 
 // Perfiles de captura ya creados para este inventario (por el admin de
