@@ -28,7 +28,7 @@ function etiquetaTalla(item) {
   return `${item.talla}*`;
 }
 
-export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
+export function PantallaCaptura({ acceso, participante, tax, onCerrarTax, onVolver }) {
   const mostrarToast = useToast();
   const [capturas, setCapturas] = useState([]);
   const [mostrarManual, setMostrarManual] = useState(false);
@@ -194,6 +194,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
   }
 
   async function cerrarTax() {
+    if (!window.confirm(`¿Cerrar tax ${tax.numero_tax} con ${totalUnidades} unidad${totalUnidades === 1 ? '' : 'es'}? Ya no vas a poder agregar más ahí a menos que lo reabras.`)) return;
     try {
       const actualizado = await api.cerrarTax(tax.id);
       onCerrarTax(actualizado);
@@ -213,6 +214,17 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
     }
   }
 
+  async function borrarTax() {
+    if (!window.confirm(`Esto borra el tax ${tax.numero_tax} por completo (no solo lo capturado). No se puede deshacer. ¿Seguro?`)) return;
+    try {
+      await api.eliminarTax(tax.id, { participanteId: participante.id });
+      mostrarToast('Tax borrado', 'ok');
+      onVolver();
+    } catch {
+      mostrarToast('No se pudo borrar el tax', 'error');
+    }
+  }
+
   const totalUnidades = agrupado.reduce((acc, i) => acc + i.cantidad, 0);
 
   return (
@@ -225,6 +237,10 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
             {!enLinea ? 'Sin conexión' : 'Reconectando'} — {cola.length} captura{cola.length === 1 ? '' : 's'} pendiente{cola.length === 1 ? '' : 's'} de subir, no se pierden.
           </div>
         )}
+
+        <button className="btn-texto" style={{ padding: 0, marginBottom: 8 }} onClick={onVolver}>
+          ‹ Seguir con otro tax
+        </button>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
@@ -240,6 +256,9 @@ export function PantallaCaptura({ acceso, participante, tax, onCerrarTax }) {
                   Reiniciar
                 </button>
               )}
+              <button className="btn btn-secundario btn-chico" style={{ color: '#B91C1C' }} onClick={borrarTax} title="Borra el tax por completo">
+                Borrar
+              </button>
               <button className="btn btn-secundario btn-chico" onClick={cerrarTax}>
                 Cerrar tax
               </button>

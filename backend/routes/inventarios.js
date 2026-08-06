@@ -52,6 +52,32 @@ router.get('/', manejarAsync(async (req, res) => {
   res.json(resultado.rows);
 }));
 
+// Admin: vista rápida del menú principal — últimos N inventarios con el total
+// de unidades capturadas y quiénes participaron, sin tener que entrar a
+// "Revisar inventarios" y buscar uno por uno.
+router.get('/recientes', manejarAsync(async (req, res) => {
+  const limite = Math.min(Number(req.query.limite) || 2, 10);
+  const resultado = await pool.query(
+    `SELECT i.id, i.numero_inventario, i.edp, i.estado, i.creado_en, i.cerrado_en, t.glosa AS tienda_glosa,
+            COALESCE(cap.total_unidades, 0)::int AS total_unidades,
+            COALESCE(personas.nombres, '{}') AS personas
+     FROM inventarios i
+     JOIN tiendas t ON t.edp = i.edp
+     LEFT JOIN LATERAL (
+       SELECT SUM(c.cantidad) AS total_unidades
+       FROM capturas c JOIN taxes tx ON tx.id = c.tax_id WHERE tx.inventario_id = i.id
+     ) cap ON true
+     LEFT JOIN LATERAL (
+       SELECT array_agg(DISTINCT COALESCE(p.nombre, p.alias)) AS nombres
+       FROM participantes p WHERE p.inventario_id = i.id
+     ) personas ON true
+     ORDER BY i.creado_en DESC
+     LIMIT $1`,
+    [limite]
+  );
+  res.json(resultado.rows);
+}));
+
 // Participante: para saber si hay algo abierto en esa tienda antes de mostrar el login.
 router.get('/abierto/:edp', manejarAsync(async (req, res) => {
   const edp = Number(req.params.edp);
@@ -170,6 +196,20 @@ router.get('/:id/exportar', manejarAsync(async (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
   res.send(lineas.join('\n'));
+}));
+
+// Admin: borra un inventario completo (participantes/taxes/capturas se van
+// con él por ON DELETE CASCADE) — para sacar pruebas o cargas por error. No
+// se puede deshacer, por eso el frontend pide confirmación antes de llamar.
+router.delete('/:id', manejarAsync(async (req, res) => {
+  const adminId = Number(req.query.adminId);
+  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
+  const id = Number(req.params.id);
+  const resultado = await pool.query('DELETE FROM inventarios WHERE id = $1 RETURNING id', [id]);
+  if (!resultado.rows.length) return res.status(404).json({ error: 'inventario_no_encontrado' });
+  res.status(204).end();
 }));
 
 export default router;

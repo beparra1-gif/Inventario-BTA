@@ -56,9 +56,11 @@ export const api = {
 
   crearInventario: (datos) => post('/api/inventarios', datos),
   buscarInventarios: (q) => solicitar(`/api/inventarios${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  inventariosRecientes: (limite = 2) => solicitar(`/api/inventarios/recientes?limite=${limite}`),
   inventarioAbiertoPorEdp: (edp) => solicitar(`/api/inventarios/abierto/${edp}`),
   cerrarInventario: (id) => post(`/api/inventarios/${id}/cerrar`, {}),
   reabrirInventario: (id, adminId) => post(`/api/inventarios/${id}/reabrir`, { adminId }),
+  eliminarInventario: (id, adminId) => solicitar(`/api/inventarios/${id}?adminId=${adminId}`, { method: 'DELETE' }),
   resumenInventario: (id) => solicitar(`/api/inventarios/${id}/resumen`),
   participantesDeInventario: (id) => solicitar(`/api/inventarios/${id}/participantes`),
   urlExportarInventario: (id) => `${URL_BASE}/api/inventarios/${id}/exportar`,
@@ -72,9 +74,17 @@ export const api = {
 
   abrirTax: (participanteId, numeroTax) => post('/api/taxes', { participanteId, numeroTax }),
   cerrarTax: (id) => post(`/api/taxes/${id}/cerrar`, {}),
-  reabrirTax: (id, adminId) => post(`/api/taxes/${id}/reabrir`, { adminId }),
+  // { adminId } para el panel admin o { participanteId } para que el propio
+  // capturador reabra/borre su propio tax sin depender del admin.
+  reabrirTax: (id, { adminId, participanteId } = {}) =>
+    post(`/api/taxes/${id}/reabrir`, { adminId, participanteId }),
   reiniciarTax: (id) => solicitar(`/api/taxes/${id}/capturas`, { method: 'DELETE' }),
-  eliminarTax: (id, adminId) => solicitar(`/api/taxes/${id}?adminId=${adminId}`, { method: 'DELETE' }),
+  eliminarTax: (id, { adminId, participanteId } = {}) => {
+    const params = new URLSearchParams();
+    if (adminId) params.set('adminId', adminId);
+    if (participanteId) params.set('participanteId', participanteId);
+    return solicitar(`/api/taxes/${id}?${params.toString()}`, { method: 'DELETE' });
+  },
 
   validarArticulo: (codigo, talla) =>
     solicitar(`/api/articulos/validar?codigo=${encodeURIComponent(codigo)}&talla=${encodeURIComponent(talla)}`),

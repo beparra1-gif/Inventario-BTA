@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { useToast } from '../contexto/ToastContext.jsx';
 import { EncabezadoInventario } from '../componentes/EncabezadoInventario.jsx';
-import { IconoAlerta } from '../componentes/Iconos.jsx';
+import { IconoAlerta, IconoEliminar } from '../componentes/Iconos.jsx';
 
 // Perfil del capturador: cuánto lleva en total, el detalle de cada tax que
 // haya tocado (para ver de un vistazo qué le falta) y una alerta si tiene
@@ -49,10 +49,53 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
     }
   }
 
+  function errorInventarioCerrado(error) {
+    mostrarToast(
+      error.info?.error === 'inventario_cerrado' ? 'El admin cerró este inventario — ya no se puede seguir capturando' : 'No se pudo completar la acción',
+      'error'
+    );
+  }
+
+  // Reabre un tax cerrado para seguir agregando/corrigiendo artículos.
+  async function modificar(t) {
+    try {
+      const tax = await api.reabrirTax(t.tax_id, { participanteId: participante.id });
+      onAbrirTax(tax);
+    } catch (error) {
+      errorInventarioCerrado(error);
+    }
+  }
+
+  // Borra lo capturado en ese tax y lo deja abierto de nuevo, para
+  // empezarlo desde cero (útil si se equivocó feo en ese número).
+  async function reiniciar(t) {
+    if (!window.confirm(`Esto borra las ${t.unidades} unidades de tax ${t.numero_tax} y lo deja abierto de nuevo. ¿Seguro?`)) return;
+    try {
+      const tax = await api.reiniciarTax(t.tax_id);
+      onAbrirTax(tax);
+    } catch (error) {
+      errorInventarioCerrado(error);
+    }
+  }
+
+  // Borra el tax completo (libera el número para volver a usarlo desde cero).
+  async function borrar(t) {
+    if (!window.confirm(`Esto borra el tax ${t.numero_tax} por completo. No se puede deshacer. ¿Seguro?`)) return;
+    try {
+      await api.eliminarTax(t.tax_id, { participanteId: participante.id });
+      cargar();
+      mostrarToast('Tax borrado', 'ok');
+    } catch (error) {
+      errorInventarioCerrado(error);
+    }
+  }
+
   const rango = useMemo(
     () => Array.from({ length: participante.tax_max - participante.tax_min + 1 }, (_, i) => participante.tax_min + i),
     [participante]
   );
+
+  const taxesCerrados = resumen?.taxes.filter((t) => t.estado === 'cerrado').length ?? 0;
 
   return (
     <div className="pantalla">
@@ -60,22 +103,30 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
       <div className="contenedor">
         <div className="tarjeta">
           <h1 className="titulo-pantalla">Hola, {participante.nombre || participante.alias}</h1>
+          <p className="subtitulo" style={{ marginTop: -8 }}>
+            Bienvenido al inventario de tienda {acceso.tienda.edp} {acceso.tienda.glosa}
+            {acceso.inventario.numero_inventario && ` · N° ${acceso.inventario.numero_inventario}`}
+          </p>
 
           {cargando ? (
             <p style={{ textAlign: 'center', color: 'var(--texto-tenue)' }}>Cargando...</p>
           ) : (
             <>
-              {resumen && resumen.totalUnidades > 0 && (
+              {resumen && (
                 <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                   <div style={{ flex: 1, textAlign: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12 }}>
                     <div style={{ fontSize: 22, fontWeight: 800 }}>{resumen.totalUnidades}</div>
-                    <div style={{ fontSize: 11, color: 'var(--texto-tenue)', textTransform: 'uppercase' }}>Capturadas en total</div>
+                    <div style={{ fontSize: 11, color: 'var(--texto-tenue)', textTransform: 'uppercase' }}>Capturadas</div>
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 22, fontWeight: 800 }}>{taxesCerrados}</div>
+                    <div style={{ fontSize: 11, color: 'var(--texto-tenue)', textTransform: 'uppercase' }}>Tax cerrados</div>
                   </div>
                   <div style={{ flex: 1, textAlign: 'center', background: resumen.filasNoReconocidas > 0 ? '#FEE2E2' : 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12 }}>
                     <div style={{ fontSize: 22, fontWeight: 800, color: resumen.filasNoReconocidas > 0 ? '#B91C1C' : 'inherit' }}>
                       {resumen.unidadesNoReconocidas}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--texto-tenue)', textTransform: 'uppercase' }}>Sin reconocer</div>
+                    <div style={{ fontSize: 11, color: 'var(--texto-tenue)', textTransform: 'uppercase' }}>Errores</div>
                   </div>
                 </div>
               )}
@@ -92,8 +143,8 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
                   <label className="etiqueta">Tus tax</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {resumen.taxes.map((t) => (
-                      <div key={t.tax_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '10px 12px' }}>
-                        <div>
+                      <div key={t.tax_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '10px 12px', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
                           <strong>Tax {t.numero_tax}</strong>
                           <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--texto-tenue)' }}>
                             {t.unidades} unidad{t.unidades === 1 ? '' : 'es'}
@@ -101,11 +152,22 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
                           </span>
                         </div>
                         {t.estado === 'abierto' ? (
-                          <button className="btn-texto" style={{ padding: 0 }} onClick={() => onAbrirTax({ id: t.tax_id, numero_tax: t.numero_tax, estado: t.estado })}>
+                          <button className="btn-texto" style={{ padding: 0, flexShrink: 0 }} onClick={() => onAbrirTax({ id: t.tax_id, numero_tax: t.numero_tax, estado: t.estado })}>
                             Continuar
                           </button>
                         ) : (
-                          <span style={{ fontSize: 11, color: 'var(--texto-suave)', textTransform: 'uppercase', fontWeight: 700 }}>Cerrado</span>
+                          <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+                            <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => modificar(t)}>Modificar</button>
+                            <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => reiniciar(t)}>Reiniciar</button>
+                            <button
+                              className="btn-texto"
+                              style={{ padding: 0, color: '#B91C1C', display: 'flex' }}
+                              title="Borrar tax"
+                              onClick={() => borrar(t)}
+                            >
+                              <IconoEliminar tamano={14} />
+                            </button>
+                          </div>
                         )}
                       </div>
                     ))}

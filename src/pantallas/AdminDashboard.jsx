@@ -25,6 +25,9 @@ export function AdminDashboard({ admin, onSalir }) {
   const [busquedaRevisar, setBusquedaRevisar] = useState('');
   const [resultadosRevisar, setResultadosRevisar] = useState([]);
 
+  // --- Últimos inventarios (vista menú) ---
+  const [recientes, setRecientes] = useState([]);
+
   // --- Inventario bajo gestión ---
   const [tienda, setTienda] = useState(null);
   const [inventario, setInventario] = useState(null);
@@ -59,6 +62,10 @@ export function AdminDashboard({ admin, onSalir }) {
     }, 250);
     return () => clearTimeout(timeout);
   }, [busquedaRevisar, vista]);
+
+  useEffect(() => {
+    cargarRecientes();
+  }, []);
 
   useEffect(() => {
     unirseAdmin();
@@ -176,6 +183,7 @@ export function AdminDashboard({ admin, onSalir }) {
       setClavesGeneradas(generadas);
       setVista('gestionar');
       mostrarToast('Inventario creado', 'ok');
+      cargarRecientes();
 
       setBusquedaCrear(''); setResultadosCrear([]); setTiendaCrear(null);
       setNumeroInventarioCrear(''); setNombresPendientes([]);
@@ -260,7 +268,7 @@ export function AdminDashboard({ admin, onSalir }) {
 
   async function reabrirTax(taxId) {
     try {
-      await api.reabrirTax(taxId, admin.id);
+      await api.reabrirTax(taxId, { adminId: admin.id });
       cargarResumen(inventario.id);
       mostrarToast('Tax reabierto', 'ok');
     } catch {
@@ -269,13 +277,37 @@ export function AdminDashboard({ admin, onSalir }) {
   }
 
   async function borrarTax(taxId) {
+    if (!window.confirm('Esto borra el tax y todo lo capturado en él. ¿Seguro?')) return;
     try {
-      await api.eliminarTax(taxId, admin.id);
+      await api.eliminarTax(taxId, { adminId: admin.id });
       cargarResumen(inventario.id);
       mostrarToast('Tax borrado — el participante puede volver a capturarlo', 'ok');
     } catch {
       mostrarToast('No se pudo borrar el tax', 'error');
     }
+  }
+
+  async function borrarInventario(inv) {
+    if (
+      !window.confirm(
+        `Esto borra el inventario ${inv.numero_inventario} completo (todas las capturas y perfiles). No se puede deshacer. ¿Seguro?`
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.eliminarInventario(inv.id, admin.id);
+      mostrarToast('Inventario borrado', 'ok');
+      if (inventario?.id === inv.id) { setVista('menu'); setInventario(null); }
+      if (vista === 'revisar') setResultadosRevisar((actuales) => actuales.filter((r) => r.id !== inv.id));
+      cargarRecientes();
+    } catch {
+      mostrarToast('No se pudo borrar el inventario', 'error');
+    }
+  }
+
+  async function cargarRecientes() {
+    try { setRecientes(await api.inventariosRecientes(2)); } catch { /* se reintenta con el próximo refresco */ }
   }
 
   const panelAdminInvitar = admin.rol === 'superadmin' && (
@@ -335,16 +367,42 @@ export function AdminDashboard({ admin, onSalir }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {vista === 'menu' && (
-              <div className="tarjeta">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <button className="btn btn-primario" style={{ height: 90, flexDirection: 'column', fontSize: 16 }} onClick={() => setVista('crear')}>
-                    + Crear inventario
-                  </button>
-                  <button className="btn btn-secundario" style={{ height: 90, flexDirection: 'column', fontSize: 16 }} onClick={() => setVista('revisar')}>
-                    Revisar inventarios realizados
-                  </button>
+              <>
+                <div className="tarjeta">
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <button className="btn btn-primario" style={{ height: 90, flexDirection: 'column', fontSize: 16 }} onClick={() => setVista('crear')}>
+                      + Crear inventario
+                    </button>
+                    <button className="btn btn-secundario" style={{ height: 90, flexDirection: 'column', fontSize: 16 }} onClick={() => setVista('revisar')}>
+                      Revisar inventarios realizados
+                    </button>
+                  </div>
                 </div>
-              </div>
+
+                {recientes.length > 0 && (
+                  <div className="tarjeta">
+                    <label className="etiqueta">Últimos inventarios</label>
+                    {recientes.map((r) => (
+                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--borde)' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{r.numero_inventario} · {r.edp} {r.tienda_glosa}</div>
+                          <div style={{ fontSize: 12, color: 'var(--texto-tenue)' }}>
+                            {r.estado} · {r.total_unidades} unidad{r.total_unidades === 1 ? '' : 'es'} · {r.personas.length > 0 ? r.personas.join(', ') : 'sin personal'}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+                          <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => abrirInventarioExistente({ edp: r.edp, glosa: r.tienda_glosa }, r)}>
+                            Ver
+                          </button>
+                          <button className="btn-texto" style={{ padding: 0, fontSize: 12, color: '#B91C1C' }} onClick={() => borrarInventario(r)}>
+                            Borrar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             {vista === 'crear' && (
@@ -411,17 +469,26 @@ export function AdminDashboard({ admin, onSalir }) {
                 </div>
                 <input className="campo" placeholder="Buscar por número, tienda o EDP..." value={busquedaRevisar} onChange={(e) => setBusquedaRevisar(e.target.value)} autoFocus />
                 {resultadosRevisar.map((r) => (
-                  <button
-                    key={r.id}
-                    className="btn btn-secundario"
-                    style={{ justifyContent: 'space-between', marginBottom: 8, textAlign: 'left' }}
-                    onClick={() => abrirInventarioExistente({ edp: r.edp, glosa: r.tienda_glosa }, r)}
-                  >
-                    <span>{r.numero_inventario} · {r.edp} {r.tienda_glosa}</span>
-                    <span style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700, color: 'var(--texto-tenue)' }}>
-                      {r.estado} · {formatearFecha(r.creado_en)}
-                    </span>
-                  </button>
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginBottom: 8 }}>
+                    <button
+                      className="btn btn-secundario"
+                      style={{ flex: 1, justifyContent: 'space-between', textAlign: 'left' }}
+                      onClick={() => abrirInventarioExistente({ edp: r.edp, glosa: r.tienda_glosa }, r)}
+                    >
+                      <span>{r.numero_inventario} · {r.edp} {r.tienda_glosa}</span>
+                      <span style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700, color: 'var(--texto-tenue)' }}>
+                        {r.estado} · {formatearFecha(r.creado_en)}
+                      </span>
+                    </button>
+                    <button
+                      className="btn btn-secundario btn-chico"
+                      title="Borrar inventario"
+                      style={{ color: '#B91C1C', flexShrink: 0 }}
+                      onClick={() => borrarInventario(r)}
+                    >
+                      <IconoEliminar tamano={16} />
+                    </button>
+                  </div>
                 ))}
                 {resultadosRevisar.length === 0 && (
                   <p style={{ textAlign: 'center', color: 'var(--texto-tenue)', fontSize: 13 }}>Sin resultados.</p>
@@ -444,10 +511,13 @@ export function AdminDashboard({ admin, onSalir }) {
                     <IconoDescargar tamano={16} /> Exportar .txt
                   </a>
                   {inventario.estado === 'abierto' ? (
-                    <button className="btn btn-secundario btn-chico" style={{ width: '100%' }} onClick={cerrarInventario}>Cerrar inventario</button>
+                    <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={cerrarInventario}>Cerrar inventario</button>
                   ) : (
-                    <button className="btn btn-secundario btn-chico" style={{ width: '100%' }} onClick={reabrirInventario}>Reabrir para corregir algo</button>
+                    <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={reabrirInventario}>Reabrir para corregir algo</button>
                   )}
+                  <button className="btn btn-secundario btn-chico" style={{ width: '100%', color: '#B91C1C' }} onClick={() => borrarInventario(inventario)}>
+                    Borrar inventario
+                  </button>
 
                   {clavesGeneradas.length > 0 && (
                     <div style={{ marginTop: 16, background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12 }}>

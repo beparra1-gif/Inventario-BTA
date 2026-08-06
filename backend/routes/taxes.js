@@ -4,16 +4,6 @@ import { manejarAsync } from '../utils/manejarAsync.js';
 
 const router = Router();
 
-async function exigirAdmin(req, res) {
-  const adminId = Number(req.body?.adminId);
-  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) {
-    res.status(403).json({ error: 'requiere_admin' });
-    return null;
-  }
-  return admin;
-}
-
 // Abre (o retoma si ya existe) un número de tax dentro del rango asignado
 // al participante. numero_tax es único por inventario (no por participante)
 // así que si otro participante ya lo abrió, falla por la constraint UNIQUE.
@@ -74,49 +64,81 @@ router.post('/:id/cerrar', manejarAsync(async (req, res) => {
   res.json(tax);
 }));
 
-// El admin corrige un tax puntual: lo reabre (por si lo cerraron por error o
-// hay que agregar algo) sin tener que reabrir todo el inventario.
+async function obtenerTaxConInventario(taxId) {
+  const { rows } = await pool.query(
+    `SELECT t.*, i.estado AS inventario_estado FROM taxes t JOIN inventarios i ON i.id = t.inventario_id WHERE t.id = $1`,
+    [taxId]
+  );
+  return rows[0] ?? null;
+}
+
+// Autoriza tanto al admin (cualquier tax) como al propio capturador dueño de
+// ese tax (solo mientras el inventario siga abierto) — así el capturador
+// puede corregir lo suyo sin depender del admin, pero no puede tocar el de
+// otro ni reabrir algo si el admin ya cerró todo el inventario.
+async function autorizarSobreTax(req, res, tax) {
+  const adminId = Number(req.body?.adminId ?? req.query.adminId);
+  if (Number.isInteger(adminId)) {
+    const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
+    if (admin) return true;
+  }
+  const participanteId = Number(req.body?.participanteId ?? req.query.participanteId);
+  if (Number.isInteger(participanteId) && participanteId === tax.participante_id) {
+    if (tax.inventario_estado !== 'abierto') {
+      res.status(409).json({ error: 'inventario_cerrado' });
+      return false;
+    }
+    return true;
+  }
+  res.status(403).json({ error: 'no_autorizado' });
+  return false;
+}
+
+// Reabre un tax cerrado (por si lo cerraron por error o hay que agregar
+// algo) sin tener que reabrir todo el inventario.
 router.post('/:id/reabrir', manejarAsync(async (req, res) => {
-  if (!(await exigirAdmin(req, res))) return;
   const id = Number(req.params.id);
+  const tax = await obtenerTaxConInventario(id);
+  if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
+  if (!(await autorizarSobreTax(req, res, tax))) return;
+
   const resultado = await pool.query(
     `UPDATE taxes SET estado = 'abierto', cerrado_en = NULL WHERE id = $1 RETURNING *`,
     [id]
   );
-  if (!resultado.rows.length) return res.status(404).json({ error: 'tax_no_encontrado' });
-
-  const tax = resultado.rows[0];
-  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:abierto', tax);
-  res.json(tax);
+  const actualizado = resultado.rows[0];
+  req.app.locals.io.to(`inventario:${actualizado.inventario_id}`).emit('tax:abierto', actualizado);
+  res.json(actualizado);
 }));
 
-// El propio capturador reinicia su tax en curso (borra todas las capturas
-// pero deja el tax abierto, sin tener que pasar por el admin) para volver a
-// empezar ese número desde cero si se equivocó feo.
+// El propio capturador (o el admin) reinicia un tax: borra todas sus
+// capturas y lo deja abierto, para volver a empezar ese número desde cero
+// si se equivocó feo — funciona tanto si el tax seguía abierto como si ya
+// lo había cerrado (en ese caso también lo reabre).
 router.delete('/:id/capturas', manejarAsync(async (req, res) => {
   const id = Number(req.params.id);
-  const tax = (await pool.query('SELECT inventario_id FROM taxes WHERE id = $1', [id])).rows[0];
+  const tax = await obtenerTaxConInventario(id);
   if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
+  if (tax.inventario_estado !== 'abierto') return res.status(409).json({ error: 'inventario_cerrado' });
 
   await pool.query('DELETE FROM capturas WHERE tax_id = $1', [id]);
+  const actualizado = (
+    await pool.query(`UPDATE taxes SET estado = 'abierto', cerrado_en = NULL WHERE id = $1 RETURNING *`, [id])
+  ).rows[0];
   req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:reiniciado', { id });
-  res.status(204).end();
+  res.json(actualizado);
 }));
 
-// El admin borra un tax completo (sus capturas se van con él, ON DELETE
-// CASCADE) para que el mismo participante lo vuelva a capturar desde cero
-// — libera el número para que se pueda reabrir de nuevo.
+// Borra un tax completo (sus capturas se van con él, ON DELETE CASCADE) —
+// libera el número para que se pueda volver a abrir desde cero.
 router.delete('/:id', manejarAsync(async (req, res) => {
-  const adminId = Number(req.query.adminId);
-  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
-
   const id = Number(req.params.id);
-  const resultado = await pool.query('DELETE FROM taxes WHERE id = $1 RETURNING inventario_id, numero_tax', [id]);
-  if (!resultado.rows.length) return res.status(404).json({ error: 'tax_no_encontrado' });
+  const tax = await obtenerTaxConInventario(id);
+  if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
+  if (!(await autorizarSobreTax(req, res, tax))) return;
 
-  const { inventario_id: inventarioId, numero_tax: numeroTax } = resultado.rows[0];
-  req.app.locals.io.to(`inventario:${inventarioId}`).emit('tax:eliminado', { id, numeroTax });
+  await pool.query('DELETE FROM taxes WHERE id = $1', [id]);
+  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:eliminado', { id, numeroTax: tax.numero_tax });
   res.status(204).end();
 }));
 
