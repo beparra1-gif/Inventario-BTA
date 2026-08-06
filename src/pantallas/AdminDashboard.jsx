@@ -14,6 +14,8 @@ export function AdminDashboard({ admin, onSalir }) {
   const [inventario, setInventario] = useState(null);
   const [claveGenerada, setClaveGenerada] = useState(null);
   const [resumen, setResumen] = useState(null);
+  const [perfiles, setPerfiles] = useState([]);
+  const [nuevoPerfil, setNuevoPerfil] = useState('');
 
   const [emailNuevoAdmin, setEmailNuevoAdmin] = useState('');
   const [nombreNuevoAdmin, setNombreNuevoAdmin] = useState('');
@@ -92,6 +94,7 @@ export function AdminDashboard({ admin, onSalir }) {
   useEffect(() => {
     if (!inventario) return undefined;
     cargarResumen(inventario.id);
+    cargarPerfiles(inventario.id);
     unirseAInventario(inventario.id);
     const socket = obtenerSocket();
     const refrescar = () => cargarResumen(inventario.id);
@@ -107,6 +110,22 @@ export function AdminDashboard({ admin, onSalir }) {
 
   async function cargarResumen(id) {
     try { setResumen(await api.resumenInventario(id)); } catch { mostrarToast('No se pudo cargar el resumen', 'error'); }
+  }
+
+  async function cargarPerfiles(id) {
+    try { setPerfiles(await api.participantesDeInventario(id)); } catch { /* se reintenta con el próximo refresco */ }
+  }
+
+  async function agregarPerfil() {
+    if (!nuevoPerfil.trim()) return;
+    try {
+      await api.crearPerfilComoAdmin(inventario.id, admin.id, nuevoPerfil.trim());
+      setNuevoPerfil('');
+      cargarPerfiles(inventario.id);
+      mostrarToast('Perfil agregado', 'ok');
+    } catch {
+      mostrarToast('No se pudo agregar el perfil', 'error');
+    }
   }
 
   async function verInventarioAbierto(t) {
@@ -152,9 +171,38 @@ export function AdminDashboard({ admin, onSalir }) {
   async function cerrarInventario() {
     try {
       setInventario(await api.cerrarInventario(inventario.id));
-      mostrarToast('Inventario cerrado', 'ok');
+      mostrarToast('Inventario cerrado — nadie puede seguir capturando hasta que lo reabras', 'ok');
     } catch {
       mostrarToast('No se pudo cerrar el inventario', 'error');
+    }
+  }
+
+  async function reabrirInventario() {
+    try {
+      setInventario(await api.reabrirInventario(inventario.id, admin.id));
+      mostrarToast('Inventario reabierto', 'ok');
+    } catch {
+      mostrarToast('No se pudo reabrir el inventario', 'error');
+    }
+  }
+
+  async function reabrirTax(taxId) {
+    try {
+      await api.reabrirTax(taxId, admin.id);
+      cargarResumen(inventario.id);
+      mostrarToast('Tax reabierto', 'ok');
+    } catch {
+      mostrarToast('No se pudo reabrir el tax', 'error');
+    }
+  }
+
+  async function borrarTax(taxId) {
+    try {
+      await api.eliminarTax(taxId, admin.id);
+      cargarResumen(inventario.id);
+      mostrarToast('Tax borrado — el participante puede volver a capturarlo', 'ok');
+    } catch {
+      mostrarToast('No se pudo borrar el tax', 'error');
     }
   }
 
@@ -234,11 +282,42 @@ export function AdminDashboard({ admin, onSalir }) {
                 >
                   <IconoDescargar tamano={16} /> Exportar .txt
                 </a>
-                {inventario.estado === 'abierto' && (
+                {inventario.estado === 'abierto' ? (
                   <button className="btn btn-secundario btn-chico" style={{ width: '100%' }} onClick={cerrarInventario}>
                     Cerrar inventario
                   </button>
+                ) : (
+                  <button className="btn btn-secundario btn-chico" style={{ width: '100%' }} onClick={reabrirInventario}>
+                    Reabrir para corregir algo
+                  </button>
                 )}
+
+                <div style={{ marginTop: 16, borderTop: '1px solid var(--borde)', paddingTop: 16 }}>
+                  <label className="etiqueta">Perfiles de captura</label>
+                  <p style={{ fontSize: 12, color: 'var(--texto-tenue)', margin: '-4px 0 10px' }}>
+                    Cárgalos de antemano para que cada persona entre con su inicial+apellido y la clave de arriba, sin inventarse un alias.
+                  </p>
+                  {perfiles.map((p) => (
+                    <div key={p.id} className="chip" style={{ margin: '0 6px 6px 0', display: 'inline-flex' }}>
+                      {p.alias} · tax {p.tax_min}-{p.tax_max}
+                    </div>
+                  ))}
+                  {inventario.estado === 'abierto' && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <input
+                        className="campo"
+                        style={{ marginBottom: 0 }}
+                        placeholder="Ej. J.PEREZ"
+                        value={nuevoPerfil}
+                        onChange={(e) => setNuevoPerfil(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && agregarPerfil()}
+                      />
+                      <button className="btn btn-secundario btn-chico" onClick={agregarPerfil} disabled={!nuevoPerfil.trim()}>
+                        Agregar
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -310,7 +389,7 @@ export function AdminDashboard({ admin, onSalir }) {
                 <div style={{ overflowX: 'auto', marginBottom: 24 }}>
                   <table className="tabla-resumen">
                     <thead>
-                      <tr><th>Alias</th><th>Tax</th><th>Estado</th><th>Unidades</th></tr>
+                      <tr><th>Alias</th><th>Tax</th><th>Estado</th><th>Unidades</th><th>Acciones</th></tr>
                     </thead>
                     <tbody>
                       {resumen.participantes.map((p) => (
@@ -319,6 +398,20 @@ export function AdminDashboard({ admin, onSalir }) {
                           <td>{p.numero_tax ?? '—'}</td>
                           <td>{p.tax_estado ?? '—'}</td>
                           <td>{p.unidades}</td>
+                          <td>
+                            {p.tax_id && (
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                {p.tax_estado === 'cerrado' && (
+                                  <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => reabrirTax(p.tax_id)}>
+                                    Reabrir
+                                  </button>
+                                )}
+                                <button className="btn-texto" style={{ padding: 0, fontSize: 12, color: '#B91C1C' }} onClick={() => borrarTax(p.tax_id)}>
+                                  Borrar
+                                </button>
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

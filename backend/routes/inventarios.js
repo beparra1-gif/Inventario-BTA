@@ -67,6 +67,18 @@ router.post('/:id/verificar-clave', manejarAsync(async (req, res) => {
   res.json(sinClaveHash(inventario));
 }));
 
+// Perfiles de captura ya creados para este inventario (por el admin de
+// antemano o por participantes que ya entraron) — se usa tanto para que un
+// participante elija/reconecte su perfil como para el roster del admin.
+router.get('/:id/participantes', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const resultado = await pool.query(
+    'SELECT id, alias, tax_min, tax_max FROM participantes WHERE inventario_id = $1 ORDER BY alias',
+    [id]
+  );
+  res.json(resultado.rows);
+}));
+
 router.post('/:id/cerrar', manejarAsync(async (req, res) => {
   const id = Number(req.params.id);
   const resultado = await pool.query(
@@ -74,6 +86,24 @@ router.post('/:id/cerrar', manejarAsync(async (req, res) => {
     [id]
   );
   if (!resultado.rows.length) return res.status(409).json({ error: 'inventario_no_abierto' });
+  res.json(sinClaveHash(resultado.rows[0]));
+}));
+
+// Cerrado (o ya exportado) no admite más capturas — el admin lo reabre acá
+// puntualmente cuando hay que corregir algo, y lo vuelve a cerrar cuando
+// termine. Mientras está cerrado nadie puede capturar (ver routes/capturas.js
+// y routes/taxes.js), ni siquiera con la clave — solo el admin lo ve/toca.
+router.post('/:id/reabrir', manejarAsync(async (req, res) => {
+  const adminId = Number(req.body?.adminId);
+  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
+  const id = Number(req.params.id);
+  const resultado = await pool.query(
+    `UPDATE inventarios SET estado = 'abierto', cerrado_en = NULL WHERE id = $1 AND estado IN ('cerrado', 'exportado') RETURNING *`,
+    [id]
+  );
+  if (!resultado.rows.length) return res.status(409).json({ error: 'inventario_no_estaba_cerrado' });
   res.json(sinClaveHash(resultado.rows[0]));
 }));
 

@@ -4,6 +4,16 @@ import { manejarAsync } from '../utils/manejarAsync.js';
 
 const router = Router();
 
+async function exigirAdmin(req, res) {
+  const adminId = Number(req.body?.adminId);
+  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
+  if (!admin) {
+    res.status(403).json({ error: 'requiere_admin' });
+    return null;
+  }
+  return admin;
+}
+
 // Abre (o retoma si ya existe) un número de tax dentro del rango asignado
 // al participante. numero_tax es único por inventario (no por participante)
 // así que si otro participante ya lo abrió, falla por la constraint UNIQUE.
@@ -14,8 +24,15 @@ router.post('/', manejarAsync(async (req, res) => {
     return res.status(400).json({ error: 'datos_invalidos' });
   }
 
-  const participante = (await pool.query('SELECT * FROM participantes WHERE id = $1', [participanteId])).rows[0];
+  const participante = (
+    await pool.query(
+      `SELECT p.*, i.estado AS inventario_estado FROM participantes p
+       JOIN inventarios i ON i.id = p.inventario_id WHERE p.id = $1`,
+      [participanteId]
+    )
+  ).rows[0];
   if (!participante) return res.status(404).json({ error: 'participante_no_encontrado' });
+  if (participante.inventario_estado !== 'abierto') return res.status(409).json({ error: 'inventario_cerrado' });
   if (numeroTax < participante.tax_min || numeroTax > participante.tax_max) {
     return res.status(400).json({ error: 'numero_tax_fuera_de_rango' });
   }
@@ -55,6 +72,39 @@ router.post('/:id/cerrar', manejarAsync(async (req, res) => {
   const tax = resultado.rows[0];
   req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:cerrado', tax);
   res.json(tax);
+}));
+
+// El admin corrige un tax puntual: lo reabre (por si lo cerraron por error o
+// hay que agregar algo) sin tener que reabrir todo el inventario.
+router.post('/:id/reabrir', manejarAsync(async (req, res) => {
+  if (!(await exigirAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const resultado = await pool.query(
+    `UPDATE taxes SET estado = 'abierto', cerrado_en = NULL WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  if (!resultado.rows.length) return res.status(404).json({ error: 'tax_no_encontrado' });
+
+  const tax = resultado.rows[0];
+  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:abierto', tax);
+  res.json(tax);
+}));
+
+// El admin borra un tax completo (sus capturas se van con él, ON DELETE
+// CASCADE) para que el mismo participante lo vuelva a capturar desde cero
+// — libera el número para que se pueda reabrir de nuevo.
+router.delete('/:id', manejarAsync(async (req, res) => {
+  const adminId = Number(req.query.adminId);
+  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
+  const id = Number(req.params.id);
+  const resultado = await pool.query('DELETE FROM taxes WHERE id = $1 RETURNING inventario_id, numero_tax', [id]);
+  if (!resultado.rows.length) return res.status(404).json({ error: 'tax_no_encontrado' });
+
+  const { inventario_id: inventarioId, numero_tax: numeroTax } = resultado.rows[0];
+  req.app.locals.io.to(`inventario:${inventarioId}`).emit('tax:eliminado', { id, numeroTax });
+  res.status(204).end();
 }));
 
 export default router;

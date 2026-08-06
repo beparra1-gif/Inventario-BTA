@@ -6,6 +6,20 @@ import { urlFotoMinuscula } from '../utils/fotos.js';
 
 const router = Router();
 
+// Un tax puede seguir "abierto" en la fila de taxes aunque el admin ya haya
+// cerrado el inventario completo (cerrar inventario no cascadea a los taxes)
+// — sin este chequeo, alguien con la app abierta en otro dispositivo podría
+// seguir agregando capturas después del cierre y distorsionar el conteo.
+async function obtenerTaxConInventario(taxId) {
+  const { rows } = await pool.query(
+    `SELECT t.*, i.estado AS inventario_estado
+     FROM taxes t JOIN inventarios i ON i.id = t.inventario_id
+     WHERE t.id = $1`,
+    [taxId]
+  );
+  return rows[0] ?? null;
+}
+
 router.get('/', manejarAsync(async (req, res) => {
   const taxId = Number(req.query.taxId);
   if (!Number.isInteger(taxId)) return res.status(400).json({ error: 'taxId_requerido' });
@@ -42,8 +56,9 @@ router.post('/', manejarAsync(async (req, res) => {
     return res.status(400).json({ error: 'datos_invalidos' });
   }
 
-  const tax = (await pool.query('SELECT * FROM taxes WHERE id = $1', [taxId])).rows[0];
+  const tax = await obtenerTaxConInventario(taxId);
   if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
+  if (tax.inventario_estado !== 'abierto') return res.status(409).json({ error: 'inventario_cerrado' });
   if (tax.estado !== 'abierto') return res.status(409).json({ error: 'tax_cerrado' });
 
   const [producto, regla] = await Promise.all([
@@ -74,34 +89,71 @@ router.post('/', manejarAsync(async (req, res) => {
   res.status(201).json(nueva);
 }));
 
-router.put('/:id', manejarAsync(async (req, res) => {
-  const id = Number(req.params.id);
-  const cantidad = Number(req.body?.cantidad);
-  if (!Number.isInteger(cantidad) || cantidad <= 0) return res.status(400).json({ error: 'cantidad_invalida' });
+// La lista de captura trabaja agrupada (codigo+talla), pero cada escaneo
+// quedó como fila propia — estos dos endpoints operan sobre el grupo
+// completo de una vez (editar cantidad total / borrar todo) en vez de que
+// el cliente tenga que manejar filas individuales, así "editar" y
+// "eliminar" son un solo tap. Van *antes* de las rutas /:id para que
+// Express no interprete "grupo" como un id.
+router.delete('/grupo', manejarAsync(async (req, res) => {
+  const taxId = Number(req.query.taxId);
+  const codigo = String(req.query.codigo ?? '');
+  const talla = String(req.query.talla ?? '');
+  if (!Number.isInteger(taxId) || !codigo || !talla) return res.status(400).json({ error: 'datos_invalidos' });
 
-  const resultado = await pool.query(
-    `UPDATE capturas SET cantidad = $1, actualizado_en = now() WHERE id = $2 RETURNING *`,
-    [cantidad, id]
-  );
-  if (!resultado.rows.length) return res.status(404).json({ error: 'captura_no_encontrada' });
+  const tax = await obtenerTaxConInventario(taxId);
+  if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
+  if (tax.inventario_estado !== 'abierto') return res.status(409).json({ error: 'inventario_cerrado' });
 
-  const captura = resultado.rows[0];
-  const tax = (await pool.query('SELECT inventario_id FROM taxes WHERE id = $1', [captura.tax_id])).rows[0];
-  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:actualizada', captura);
-  res.json(captura);
+  await pool.query('DELETE FROM capturas WHERE tax_id = $1 AND codigo = $2 AND talla = $3', [taxId, codigo, talla]);
+  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:eliminada', { codigo, talla });
+  res.status(204).end();
 }));
 
-router.delete('/:id', manejarAsync(async (req, res) => {
-  const id = Number(req.params.id);
-  const resultado = await pool.query(
-    `DELETE FROM capturas WHERE id = $1 RETURNING tax_id`,
-    [id]
-  );
-  if (!resultado.rows.length) return res.status(404).json({ error: 'captura_no_encontrada' });
+router.put('/grupo', manejarAsync(async (req, res) => {
+  const taxId = Number(req.body?.taxId);
+  const codigo = String(req.body?.codigo ?? '');
+  const talla = String(req.body?.talla ?? '');
+  const cantidad = Number(req.body?.cantidad);
+  if (!Number.isInteger(taxId) || !codigo || !talla || !Number.isInteger(cantidad) || cantidad <= 0) {
+    return res.status(400).json({ error: 'datos_invalidos' });
+  }
 
-  const tax = (await pool.query('SELECT inventario_id FROM taxes WHERE id = $1', [resultado.rows[0].tax_id])).rows[0];
-  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:eliminada', { id });
-  res.status(204).end();
+  const tax = await obtenerTaxConInventario(taxId);
+  if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
+  if (tax.inventario_estado !== 'abierto') return res.status(409).json({ error: 'inventario_cerrado' });
+
+  const filaExistente = (
+    await pool.query(
+      'SELECT * FROM capturas WHERE tax_id = $1 AND codigo = $2 AND talla = $3 ORDER BY creado_en DESC LIMIT 1',
+      [taxId, codigo, talla]
+    )
+  ).rows[0];
+  if (!filaExistente) return res.status(404).json({ error: 'grupo_no_encontrado' });
+
+  // Colapsa todas las filas del grupo en una sola con la cantidad exacta
+  // que se pidió — se pierde el detalle de escaneo por fila (no se muestra
+  // en la UI igual), pero mantiene reconocido/descripcion/foto/talla real.
+  await pool.query('DELETE FROM capturas WHERE tax_id = $1 AND codigo = $2 AND talla = $3', [taxId, codigo, talla]);
+  const nueva = (
+    await pool.query(
+      `INSERT INTO capturas (tax_id, codigo, talla, cantidad, reconocido, descripcion_snapshot, foto_url_snapshot, talla_real_snapshot, origen)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'manual') RETURNING *`,
+      [
+        taxId,
+        codigo,
+        talla,
+        cantidad,
+        filaExistente.reconocido,
+        filaExistente.descripcion_snapshot,
+        filaExistente.foto_url_snapshot,
+        filaExistente.talla_real_snapshot,
+      ]
+    )
+  ).rows[0];
+
+  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:actualizada', nueva);
+  res.json(nueva);
 }));
 
 export default router;

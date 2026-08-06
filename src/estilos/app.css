@@ -240,42 +240,9 @@ label.etiqueta {
   padding: 10px;
 }
 
-.item-captura img {
-  width: 56px;
-  height: 56px;
-  border-radius: 8px;
-  object-fit: contain;
-  background: var(--fondo-sutil);
-  border: 1px solid var(--borde);
-  flex-shrink: 0;
-}
-
 .item-captura .detalle { flex: 1; min-width: 0; }
 .item-captura .codigo { font-weight: 700; font-size: 14px; }
 .item-captura .descripcion { font-size: 12px; color: var(--texto-tenue); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.selector-cantidad {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.selector-cantidad button {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1px solid var(--borde);
-  background: var(--fondo-sutil);
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.selector-cantidad span { min-width: 22px; text-align: center; font-weight: 700; }
 
 /* ---------- Botón flotante de escaneo/foco ---------- */
 

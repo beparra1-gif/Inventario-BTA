@@ -64,3 +64,17 @@ export const IconoCheck = (props) => (
     <polyline points="20 6 9 17 4 12" />
   </svg>
 );
+
+export const IconoAlerta = (props) => (
+  <svg {...base} width={props.tamano ?? 14} height={props.tamano ?? 14} {...props}>
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+    <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
+export const IconoEliminar = (props) => (
+  <svg {...base} width={props.tamano ?? 18} height={props.tamano ?? 18} {...props}>
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
