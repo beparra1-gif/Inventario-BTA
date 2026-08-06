@@ -203,6 +203,7 @@ router.get('/:id/exportar', manejarAsync(async (req, res) => {
 // se puede deshacer, por eso el frontend pide confirmación antes de llamar.
 router.delete('/:id', manejarAsync(async (req, res) => {
   const adminId = Number(req.query.adminId);
+  if (!Number.isInteger(adminId)) return res.status(403).json({ error: 'requiere_admin' });
   const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
   if (!admin) return res.status(403).json({ error: 'requiere_admin' });
 
