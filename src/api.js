@@ -48,6 +48,8 @@ export const api = {
     post('/api/auth/configuracion-inicial', { email, password, nombre }),
   cambiarPassword: (adminId, passwordActual, passwordNueva) =>
     post('/api/auth/cambiar-password', { adminId, passwordActual, passwordNueva }),
+  invitarAdmin: (solicitanteId, email, nombre, rol) =>
+    post('/api/auth/admins', { solicitanteId, email, nombre, rol }),
 
   buscarTiendas: (q) => solicitar(`/api/tiendas${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   obtenerTienda: (edp) => solicitar(`/api/tiendas/${edp}`),

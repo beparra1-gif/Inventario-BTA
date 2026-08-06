@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import pool from '../db.js';
-import { hashClave, verificarClave } from '../utils/claves.js';
+import { hashClave, verificarClave, generarClaveProvisoria } from '../utils/claves.js';
 import { agruparCapturas, generarLineasExportacion, nombreArchivoExportacion } from '../utils/ean13.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
 
@@ -10,26 +10,29 @@ function sinClaveHash({ clave_hash, ...resto }) {
   return resto;
 }
 
-// Admin: crea un inventario para una tienda y define la clave de acceso que
-// van a usar los participantes para entrar a capturar.
+// Admin: crea un inventario para una tienda. La clave de acceso para
+// participantes se genera sola (PIN de 6 dígitos) salvo que el admin mande
+// una propia — se devuelve en claro *solo* en esta respuesta (después no
+// se puede recuperar, queda hasheada) para que el admin la comparta con su
+// equipo.
 router.post('/', manejarAsync(async (req, res) => {
   const numeroInventario = String(req.body?.numeroInventario ?? '').trim();
   const edp = Number(req.body?.edp);
-  const clave = String(req.body?.clave ?? '');
+  const claveEnClaro = req.body?.clave ? String(req.body.clave) : generarClaveProvisoria();
   const creadoPorAdminId = Number(req.body?.creadoPorAdminId);
 
-  if (!numeroInventario || !Number.isInteger(edp) || !clave || !Number.isInteger(creadoPorAdminId)) {
+  if (!numeroInventario || !Number.isInteger(edp) || !Number.isInteger(creadoPorAdminId)) {
     return res.status(400).json({ error: 'datos_incompletos' });
   }
 
-  const claveHash = await hashClave(clave);
+  const claveHash = await hashClave(claveEnClaro);
   try {
     const resultado = await pool.query(
       `INSERT INTO inventarios (numero_inventario, edp, clave_hash, creado_por_admin_id)
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [numeroInventario, edp, claveHash, creadoPorAdminId]
     );
-    res.status(201).json(sinClaveHash(resultado.rows[0]));
+    res.status(201).json({ ...sinClaveHash(resultado.rows[0]), clave: claveEnClaro });
   } catch (error) {
     if (error.code === '23505') return res.status(409).json({ error: 'numero_inventario_ya_existe' });
     if (error.code === '23503') return res.status(400).json({ error: 'tienda_no_encontrada' });

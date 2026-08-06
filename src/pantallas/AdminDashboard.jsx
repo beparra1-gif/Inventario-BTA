@@ -10,9 +10,15 @@ export function AdminDashboard({ admin, onSalir }) {
   const [resultados, setResultados] = useState([]);
   const [tienda, setTienda] = useState(null);
   const [numeroInventario, setNumeroInventario] = useState('');
-  const [clave, setClave] = useState('');
+  const [claveManual, setClaveManual] = useState('');
   const [inventario, setInventario] = useState(null);
+  const [claveGenerada, setClaveGenerada] = useState(null);
   const [resumen, setResumen] = useState(null);
+
+  const [emailNuevoAdmin, setEmailNuevoAdmin] = useState('');
+  const [nombreNuevoAdmin, setNombreNuevoAdmin] = useState('');
+  const [rolNuevoAdmin, setRolNuevoAdmin] = useState('admin');
+  const [adminInvitado, setAdminInvitado] = useState(null);
 
   const [subiendoTiendas, setSubiendoTiendas] = useState(false);
   const [subiendoProductos, setSubiendoProductos] = useState(false);
@@ -113,13 +119,33 @@ export function AdminDashboard({ admin, onSalir }) {
   }
 
   async function crearInventario() {
-    if (!tienda || !numeroInventario || !clave) return;
+    if (!tienda || !numeroInventario) return;
     try {
-      const nuevo = await api.crearInventario({ numeroInventario, edp: tienda.edp, clave, creadoPorAdminId: admin.id });
+      const nuevo = await api.crearInventario({
+        numeroInventario,
+        edp: tienda.edp,
+        clave: claveManual || undefined,
+        creadoPorAdminId: admin.id,
+      });
       setInventario(nuevo);
+      setClaveGenerada(nuevo.clave);
+      setClaveManual('');
       mostrarToast('Inventario creado', 'ok');
     } catch (error) {
       mostrarToast(error.info?.error === 'numero_inventario_ya_existe' ? 'Ese número de inventario ya existe' : 'No se pudo crear el inventario', 'error');
+    }
+  }
+
+  async function invitarAdmin() {
+    if (!emailNuevoAdmin) return;
+    try {
+      const resultado = await api.invitarAdmin(admin.id, emailNuevoAdmin, nombreNuevoAdmin, rolNuevoAdmin);
+      setAdminInvitado(resultado);
+      setEmailNuevoAdmin('');
+      setNombreNuevoAdmin('');
+      mostrarToast('Admin agregado', 'ok');
+    } catch (error) {
+      mostrarToast(error.info?.error === 'email_ya_existe' ? 'Ya existe un admin con ese correo' : 'No se pudo agregar el admin', 'error');
     }
   }
 
@@ -150,7 +176,7 @@ export function AdminDashboard({ admin, onSalir }) {
                 key={t.edp}
                 className="btn btn-secundario btn-chico"
                 style={{ justifyContent: 'flex-start', width: '100%', marginBottom: 6 }}
-                onClick={() => { setTienda(t); setBusqueda(''); setResultados([]); setInventario(null); setResumen(null); }}
+                onClick={() => { setTienda(t); setBusqueda(''); setResultados([]); setInventario(null); setResumen(null); setClaveGenerada(null); }}
               >
                 <IconoTienda tamano={14} /> {t.edp} · {t.glosa}
               </button>
@@ -168,9 +194,15 @@ export function AdminDashboard({ admin, onSalir }) {
                   <>
                     <label className="etiqueta">Número de inventario</label>
                     <input className="campo" value={numeroInventario} onChange={(e) => setNumeroInventario(e.target.value)} />
-                    <label className="etiqueta">Clave de acceso para participantes</label>
-                    <input className="campo" type="password" value={clave} onChange={(e) => setClave(e.target.value)} />
-                    <button className="btn btn-primario" onClick={crearInventario} disabled={!numeroInventario || !clave}>
+                    <label className="etiqueta">Clave personalizada (opcional)</label>
+                    <input
+                      className="campo"
+                      type="text"
+                      placeholder="Vacío = se genera un PIN de 6 dígitos"
+                      value={claveManual}
+                      onChange={(e) => setClaveManual(e.target.value)}
+                    />
+                    <button className="btn btn-primario" onClick={crearInventario} disabled={!numeroInventario}>
                       Crear inventario
                     </button>
                   </>
@@ -178,10 +210,22 @@ export function AdminDashboard({ admin, onSalir }) {
               </>
             )}
 
+            {claveGenerada && (
+              <div className="info-box" style={{ marginTop: 12, background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 14, textAlign: 'center' }}>
+                <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--texto-tenue)', fontWeight: 700, marginBottom: 4 }}>
+                  Clave para compartir con el equipo
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 2 }}>{claveGenerada}</div>
+                <p style={{ fontSize: 12, color: 'var(--texto-tenue)', margin: '6px 0 0' }}>
+                  Solo se muestra una vez — anótala antes de salir de esta pantalla.
+                </p>
+              </div>
+            )}
+
             {inventario && (
               <div style={{ marginTop: 16, borderTop: '1px solid var(--borde)', paddingTop: 16 }}>
                 <p style={{ fontSize: 13, margin: '0 0 12px' }}>
-                  Inventario <strong>{inventario.numero_inventario}</strong> · estado <strong>{inventario.estado}</strong>
+                  Inventario <strong>{inventario.numero_inventario}</strong> · estado <strong>{inventario.estado}</strong> · tienda <strong>{tienda.edp}</strong>
                 </p>
                 <a
                   className="btn btn-secundario btn-chico"
@@ -229,6 +273,32 @@ export function AdminDashboard({ admin, onSalir }) {
               </p>
             )}
           </div>
+
+          {admin.rol === 'superadmin' && (
+            <div className="tarjeta">
+              <h3 style={{ marginTop: 0 }}>Agregar administrador</h3>
+
+              <label className="etiqueta">Correo</label>
+              <input className="campo" type="email" value={emailNuevoAdmin} onChange={(e) => setEmailNuevoAdmin(e.target.value)} />
+              <label className="etiqueta">Nombre</label>
+              <input className="campo" value={nombreNuevoAdmin} onChange={(e) => setNombreNuevoAdmin(e.target.value)} />
+              <label className="etiqueta">Rol</label>
+              <select className="campo" value={rolNuevoAdmin} onChange={(e) => setRolNuevoAdmin(e.target.value)}>
+                <option value="admin">Admin</option>
+                <option value="superadmin">Superadmin</option>
+              </select>
+              <button className="btn btn-secundario btn-chico" style={{ width: '100%' }} onClick={invitarAdmin} disabled={!emailNuevoAdmin}>
+                Agregar
+              </button>
+
+              {adminInvitado && (
+                <div style={{ marginTop: 12, background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12, fontSize: 13 }}>
+                  <strong>{adminInvitado.email}</strong> agregado. Contraseña temporal (se le pide cambiarla al entrar):
+                  <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 1, marginTop: 4 }}>{adminInvitado.passwordTemporal}</div>
+                </div>
+              )}
+            </div>
+          )}
           </div>
 
           <div className="tarjeta">
