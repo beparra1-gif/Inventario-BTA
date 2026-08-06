@@ -6,6 +6,16 @@ import { urlFotoMinuscula } from '../utils/fotos.js';
 
 const router = Router();
 
+// agruparCapturas (backend/utils/ean13.js) — reusado tal cual por el
+// frontend — espera `descripcion`/`tallaReal`, pero las filas de la tabla
+// guardan `descripcion_snapshot`/`talla_real_snapshot`. GET /agrupado ya
+// hacía este alias en el SQL; estos otros endpoints devuelven la fila cruda
+// (INSERT/SELECT *) así que había que aliasearla acá también, si no el
+// nombre y la talla real nunca llegaban a la lista de captura en vivo.
+function conAlias(fila) {
+  return { ...fila, descripcion: fila.descripcion_snapshot, tallaReal: fila.talla_real_snapshot };
+}
+
 // Un tax puede seguir "abierto" en la fila de taxes aunque el admin ya haya
 // cerrado el inventario completo (cerrar inventario no cascadea a los taxes)
 // — sin este chequeo, alguien con la app abierta en otro dispositivo podría
@@ -52,7 +62,7 @@ router.get('/', manejarAsync(async (req, res) => {
   const taxId = Number(req.query.taxId);
   if (!Number.isInteger(taxId)) return res.status(400).json({ error: 'taxId_requerido' });
   const resultado = await pool.query('SELECT * FROM capturas WHERE tax_id = $1 ORDER BY creado_en DESC', [taxId]);
-  res.json(resultado.rows);
+  res.json(resultado.rows.map(conAlias));
 }));
 
 router.get('/agrupado', manejarAsync(async (req, res) => {
@@ -113,9 +123,10 @@ router.post('/', manejarAsync(async (req, res) => {
     )
   ).rows[0];
 
-  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:nueva', nueva);
+  const nuevaConAlias = conAlias(nueva);
+  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:nueva', nuevaConAlias);
   if (!nueva.reconocido) await revisarAlertaErrores(req.app.locals.io, tax);
-  res.status(201).json(nueva);
+  res.status(201).json(nuevaConAlias);
 }));
 
 // La lista de captura trabaja agrupada (codigo+talla), pero cada escaneo
@@ -181,8 +192,9 @@ router.put('/grupo', manejarAsync(async (req, res) => {
     )
   ).rows[0];
 
-  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:actualizada', nueva);
-  res.json(nueva);
+  const nuevaConAlias = conAlias(nueva);
+  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('captura:actualizada', nuevaConAlias);
+  res.json(nuevaConAlias);
 }));
 
 export default router;
