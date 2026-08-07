@@ -55,6 +55,8 @@ export const api = {
     solicitar(`/api/auth/admins/${id}`, { method: 'PUT', body: JSON.stringify({ solicitanteId, ...cambios }) }),
   eliminarAdmin: (id, solicitanteId) =>
     solicitar(`/api/auth/admins/${id}?solicitanteId=${solicitanteId}`, { method: 'DELETE' }),
+  resetearPasswordAdmin: (id, solicitanteId) =>
+    post(`/api/auth/admins/${id}/resetear-password`, { solicitanteId }),
 
   buscarTiendas: (q) => solicitar(`/api/tiendas${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   obtenerTienda: (edp) => solicitar(`/api/tiendas/${edp}`),

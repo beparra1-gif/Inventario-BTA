@@ -49,6 +49,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
 
   // --- Administradores (superadmin) ---
   const [listaAdmins, setListaAdmins] = useState([]);
+  const [passwordsGeneradas, setPasswordsGeneradas] = useState([]);
 
   // --- Mi perfil ---
   const [nombrePerfil, setNombrePerfil] = useState(admin.nombre ?? '');
@@ -432,6 +433,34 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     }
   }
 
+  async function resetearPasswordAdminAccion(a) {
+    if (
+      !window.confirm(
+        `Esto genera una clave temporal nueva para ${a.nombre || a.email} — la anterior deja de servir y le va a pedir cambiarla apenas entre. ¿Seguro?`
+      )
+    ) {
+      return;
+    }
+    try {
+      const r = await api.resetearPasswordAdmin(a.id, admin.id);
+      setPasswordsGeneradas((actuales) => [...actuales, { id: a.id, nombre: a.nombre, email: a.email, password: r.passwordTemporal }]);
+      mostrarToast('Clave temporal generada', 'ok');
+    } catch {
+      mostrarToast('No se pudo generar la clave', 'error');
+    }
+  }
+
+  // Mismo mecanismo que compartirPorWhatsapp (participantes), pero para la
+  // clave temporal de un admin — sin tienda/inventario de por medio.
+  function compartirPasswordAdminPorWhatsapp(nombreOEmail, password) {
+    const mensaje = [
+      `Hola ${nombreOEmail}, tu clave temporal para entrar al panel de administración es:`,
+      password,
+      'Te la va a pedir cambiar apenas entres.',
+    ].join('\n');
+    window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener,noreferrer');
+  }
+
   async function borrarAdmin(a) {
     if (!window.confirm(`Esto borra la cuenta de ${a.nombre || a.email}. No se puede deshacer. ¿Seguro?`)) return;
     try {
@@ -612,6 +641,31 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                   <h3 style={{ margin: 0 }}>Administradores</h3>
                   <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista('menu')}>‹ Volver</button>
                 </div>
+
+                {passwordsGeneradas.length > 0 && (
+                  <div style={{ marginBottom: 12, background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--texto-tenue)', fontWeight: 700, marginBottom: 8 }}>
+                      Claves temporales recién generadas
+                    </div>
+                    {passwordsGeneradas.map((p) => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, padding: '4px 0', gap: 8 }}>
+                        <span>{p.nombre || p.email}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                          <strong style={{ letterSpacing: 1 }}>{p.password}</strong>
+                          <button
+                            onClick={() => compartirPasswordAdminPorWhatsapp(p.nombre || p.email, p.password)}
+                            title="Compartir por WhatsApp"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: 0 }}
+                          >
+                            <IconoCompartir tamano={15} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button className="btn-texto" style={{ padding: 0, marginTop: 6 }} onClick={() => setPasswordsGeneradas([])}>Ocultar</button>
+                  </div>
+                )}
+
                 {listaAdmins.map((a) => (
                   <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--borde)' }}>
                     <div style={{ minWidth: 0 }}>
@@ -629,6 +683,11 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                         <option value="admin">Admin</option>
                         <option value="superadmin">Superadmin</option>
                       </select>
+                      {a.id !== admin.id && (
+                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => resetearPasswordAdminAccion(a)}>
+                          Resetear clave
+                        </button>
+                      )}
                       {a.id !== admin.id && (
                         <button className="btn-texto" style={{ padding: 0, color: '#B91C1C', display: 'flex' }} title="Borrar" onClick={() => borrarAdmin(a)}>
                           <IconoEliminar tamano={16} />

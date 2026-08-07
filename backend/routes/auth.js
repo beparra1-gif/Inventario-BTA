@@ -141,6 +141,26 @@ router.put('/admins/:id', manejarAsync(async (req, res) => {
   res.json(datosPublicos(resultado.rows[0]));
 }));
 
+// Superadmin resetea la clave de otro admin que la perdió u olvidó — a
+// diferencia de cambiar-password no pide la clave actual (si la supiera no
+// la habría perdido), genera una temporal y lo obliga a cambiarla en el
+// próximo login, igual que al invitarlo por primera vez.
+router.post('/admins/:id/resetear-password', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const solicitanteId = Number(req.body?.solicitanteId);
+  const solicitante = (await pool.query('SELECT rol FROM admins WHERE id = $1', [solicitanteId])).rows[0];
+  if (solicitante?.rol !== 'superadmin') return res.status(403).json({ error: 'requiere_superadmin' });
+
+  const passwordTemporal = Math.random().toString(36).slice(2, 10);
+  const passwordHash = await hashClave(passwordTemporal);
+  const resultado = await pool.query(
+    `UPDATE admins SET password_hash = $1, debe_cambiar_password = true WHERE id = $2 RETURNING *`,
+    [passwordHash, id]
+  );
+  if (!resultado.rows.length) return res.status(404).json({ error: 'admin_no_encontrado' });
+  res.json({ ...datosPublicos(resultado.rows[0]), passwordTemporal });
+}));
+
 // Solo el superadmin borra admins — no puede borrarse a sí mismo ni dejar la
 // cuenta sin ningún superadmin (se quedaría sin nadie que pueda arreglarlo).
 router.delete('/admins/:id', manejarAsync(async (req, res) => {
