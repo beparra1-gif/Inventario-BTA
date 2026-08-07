@@ -102,14 +102,14 @@ export const api = {
 
   validarArticulo: (codigo, talla) =>
     solicitar(`/api/articulos/validar?codigo=${encodeURIComponent(codigo)}&talla=${encodeURIComponent(talla)}`),
+  tallasDeArticulo: (codigo) => solicitar(`/api/articulos/tallas?codigo=${encodeURIComponent(codigo)}`),
 
   capturasDeTax: (taxId) => solicitar(`/api/capturas?taxId=${taxId}`),
   capturasAgrupadas: (taxId) => solicitar(`/api/capturas/agrupado?taxId=${taxId}`),
   crearCaptura: (datos) => post('/api/capturas', datos),
-  editarGrupoCaptura: (taxId, codigo, talla, cantidad) =>
-    solicitar('/api/capturas/grupo', { method: 'PUT', body: JSON.stringify({ taxId, codigo, talla, cantidad }) }),
-  eliminarGrupoCaptura: (taxId, codigo, talla) =>
-    solicitar(`/api/capturas/grupo?taxId=${taxId}&codigo=${codigo}&talla=${talla}`, { method: 'DELETE' }),
+  editarCaptura: (id, cantidad) =>
+    solicitar(`/api/capturas/${id}`, { method: 'PUT', body: JSON.stringify({ cantidad }) }),
+  eliminarCaptura: (id) => solicitar(`/api/capturas/${id}`, { method: 'DELETE' }),
 
   subirMaestroTiendas: (adminId, archivo) => subirArchivo('/api/maestros/tiendas', adminId, archivo),
   subirMaestroProductos: (adminId, archivo) => subirArchivo('/api/maestros/productos', adminId, archivo),

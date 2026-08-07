@@ -34,4 +34,35 @@ router.get('/validar', manejarAsync(async (req, res) => {
   });
 }));
 
+// Para el ingreso manual: dado solo el código, trae todas las tallas que
+// existen para ese artículo en el maestro (cruda + real ya traducida) para
+// que el usuario elija de una lista en vez de tener que adivinar/escribir
+// la talla cruda de a dos dígitos. Si el código no está en el maestro
+// (artículo no reconocido) no hay tallas que ofrecer — el frontend cae de
+// vuelta al campo de talla libre en ese caso.
+router.get('/tallas', manejarAsync(async (req, res) => {
+  const codigo = String(req.query.codigo ?? '').trim();
+  if (!/^\d{7}$/.test(codigo)) return res.status(400).json({ error: 'codigo_invalido' });
+
+  const [productos, reglas] = await Promise.all([
+    pool.query('SELECT talla, descripcion FROM productos_maestro WHERE codigo = $1 ORDER BY talla', [codigo]),
+    pool.query('SELECT talla_cruda, talla_real FROM reglas_talla WHERE prefijo = $1', [codigo]),
+  ]);
+  if (!productos.rows.length) return res.status(404).json({ error: 'articulo_no_encontrado' });
+
+  const mapaReglas = new Map(reglas.rows.map((r) => [r.talla_cruda, r.talla_real]));
+  const tallas = productos.rows.map((p) => ({
+    tallaCruda: p.talla,
+    tallaReal: mapaReglas.get(p.talla) ?? null,
+    tallaUnica: p.talla === '01' && !mapaReglas.has(p.talla),
+  }));
+
+  res.json({
+    codigo,
+    descripcion: productos.rows[0]?.descripcion ?? null,
+    fotoUrl: urlFotoMinuscula(codigo),
+    tallas,
+  });
+}));
+
 export default router;

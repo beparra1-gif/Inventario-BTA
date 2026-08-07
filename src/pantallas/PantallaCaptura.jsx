@@ -35,6 +35,11 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
   const [mostrarManual, setMostrarManual] = useState(false);
   const [codigoManual, setCodigoManual] = useState('');
   const [tallaManual, setTallaManual] = useState('');
+  // null = todavía no se consultó (código incompleto); [] = código
+  // consultado pero no está en el maestro (cae al campo de talla libre);
+  // [...] = tallas para elegir.
+  const [tallasDisponibles, setTallasDisponibles] = useState(null);
+  const [cantidadManual, setCantidadManual] = useState('1');
   const [previaManual, setPreviaManual] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState(null);
@@ -99,7 +104,15 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
     }
   }
 
-  const agrupado = useMemo(() => agruparCapturas(capturas), [capturas]);
+  // Mientras el tax está abierto se muestra en el orden en que se fue
+  // capturando, una fila por escaneo/ingreso (sin sumar de una) — así el
+  // capturador ve exactamente lo que hizo, en orden, y puede editar/borrar
+  // cada entrada puntual. Recién al cerrar el tax se agrupa y suma por
+  // código+talla, como una especie de "informe final" de solo lectura.
+  const listaMostrada = useMemo(
+    () => (taxCerrado ? agruparCapturas(capturas) : capturas),
+    [capturas, taxCerrado]
+  );
 
   // error.status solo existe si el servidor alcanzó a responder (ver
   // src/api.js) — si no está, fetch nunca llegó a ningún lado: es falta de
@@ -168,6 +181,25 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
     { activo: !soloLectura && !mostrarManual }
   );
 
+  // Apenas el código queda completo, se consultan las tallas que existen
+  // para ese artículo en el maestro — así se elige de una lista (cruda +
+  // real ya traducida) en vez de tener que adivinar/escribir la talla
+  // cruda de a dos dígitos. Si no está en el maestro, tallasDisponibles
+  // queda en [] y el formulario cae al campo de talla libre de siempre.
+  useEffect(() => {
+    setTallaManual('');
+    if (!/^\d{7}$/.test(codigoManual)) {
+      setTallasDisponibles(null);
+      return undefined;
+    }
+    let cancelado = false;
+    api
+      .tallasDeArticulo(codigoManual)
+      .then((r) => { if (!cancelado) setTallasDisponibles(r.tallas); })
+      .catch(() => { if (!cancelado) setTallasDisponibles([]); });
+    return () => { cancelado = true; };
+  }, [codigoManual]);
+
   // Manual: acá sí se corrobora antes de guardar (por eso trae foto) —
   // ingresado a mano es más propenso a error de tipeo que un escaneo.
   useEffect(() => {
@@ -188,22 +220,26 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
   function confirmarManual() {
     const resultado = parseArticuloManual(codigoManual, tallaManual);
     if (!resultado.valido) return;
+    const cantidad = Number(cantidadManual);
+    if (!Number.isInteger(cantidad) || cantidad <= 0) return;
     crearCapturaOptimista({
       taxId: tax.id,
       codigo: resultado.codigoProducto,
       talla: resultado.tallaCruda,
       ean13Original: null,
-      cantidad: 1,
+      cantidad,
       origen: 'manual',
     });
     setCodigoManual('');
     setTallaManual('');
+    setTallasDisponibles(null);
+    setCantidadManual('1');
     setPreviaManual(null);
     setMostrarManual(false);
   }
 
   function empezarEdicion(item) {
-    setEditando(`${item.codigo}-${item.talla}`);
+    setEditando(item.id);
     setValorEdicion(String(item.cantidad));
   }
 
@@ -213,17 +249,17 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
     if (!Number.isInteger(cantidad) || cantidad <= 0) return;
     if (cantidad === item.cantidad) return;
     try {
-      await api.editarGrupoCaptura(tax.id, item.codigo, item.talla, cantidad);
-      await cargarCapturas();
+      const actualizada = await api.editarCaptura(item.id, cantidad);
+      setCapturas((actuales) => actuales.map((c) => (c.id === item.id ? actualizada : c)));
     } catch (error) {
       manejarErrorCaptura(error);
     }
   }
 
-  async function eliminarGrupo(item) {
+  async function eliminarFila(item) {
     try {
-      await api.eliminarGrupoCaptura(tax.id, item.codigo, item.talla);
-      setCapturas((actuales) => actuales.filter((c) => !(c.codigo === item.codigo && c.talla === item.talla)));
+      await api.eliminarCaptura(item.id);
+      setCapturas((actuales) => actuales.filter((c) => c.id !== item.id));
     } catch (error) {
       manejarErrorCaptura(error);
     }
@@ -271,7 +307,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
     }
   }
 
-  const totalUnidades = agrupado.reduce((acc, i) => acc + i.cantidad, 0);
+  const totalUnidades = listaMostrada.reduce((acc, i) => acc + i.cantidad, 0);
 
   return (
     <div className="pantalla" style={{ paddingBottom: 100 }}>
@@ -358,15 +394,15 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
 
         {cargando ? (
           <p style={{ textAlign: 'center', color: 'var(--texto-tenue)' }}>Cargando...</p>
-        ) : agrupado.length === 0 ? (
+        ) : listaMostrada.length === 0 ? (
           <p style={{ textAlign: 'center', color: 'var(--texto-tenue)' }}>
             {soloLectura ? 'Este tax no tiene artículos.' : 'Escanea o ingresa un artículo para empezar.'}
           </p>
         ) : (
           <div className="lista-capturas">
-            {agrupado.map((item) => {
-              const clave = `${item.codigo}-${item.talla}`;
-              const seEstaEditando = editando === clave;
+            {listaMostrada.map((item) => {
+              const clave = item.id ?? item.idLocal ?? `${item.codigo}-${item.talla}`;
+              const seEstaEditando = editando === item.id;
               const pendiente = item.reconocido === null;
               const colorBorde = pendiente ? 'var(--borde)' : item.reconocido ? 'var(--exito)' : '#DC2626';
               // agruparCapturas no conserva el flag "offline" (solo lo que
@@ -404,7 +440,7 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
                     </span>
                     {!soloLectura && !pendiente && (
                       <button
-                        onClick={() => eliminarGrupo(item)}
+                        onClick={() => eliminarFila(item)}
                         title="Eliminar"
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--texto-suave)', flexShrink: 0, display: 'flex' }}
                       >
@@ -448,15 +484,47 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
               autoFocus
             />
 
-            <label className="etiqueta">Talla</label>
-            <input
-              className="campo"
-              inputMode="numeric"
-              maxLength={2}
-              value={tallaManual}
-              onChange={(e) => setTallaManual(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={(e) => e.key === 'Enter' && confirmarManual()}
-            />
+            {tallasDisponibles && tallasDisponibles.length > 0 ? (
+              <>
+                <label className="etiqueta">Talla ({tallasDisponibles.length} disponible{tallasDisponibles.length === 1 ? '' : 's'})</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                  {tallasDisponibles.map((t) => {
+                    const etiqueta = t.tallaReal || (t.tallaUnica ? 'única' : `${t.tallaCruda}*`);
+                    const activa = tallaManual === t.tallaCruda;
+                    return (
+                      <button
+                        key={t.tallaCruda}
+                        onClick={() => setTallaManual(t.tallaCruda)}
+                        className="btn-chico"
+                        style={{
+                          borderRadius: 8,
+                          border: '1px solid var(--borde)',
+                          background: activa ? 'var(--primario)' : 'var(--fondo-tarjeta)',
+                          color: activa ? 'white' : 'var(--texto)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {etiqueta}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="etiqueta">
+                  Talla{tallasDisponibles && /^\d{7}$/.test(codigoManual) ? ' (artículo no está en el maestro, ingrésala a mano)' : ''}
+                </label>
+                <input
+                  className="campo"
+                  inputMode="numeric"
+                  maxLength={2}
+                  value={tallaManual}
+                  onChange={(e) => setTallaManual(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={(e) => e.key === 'Enter' && confirmarManual()}
+                />
+              </>
+            )}
 
             {previaManual && (
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 10, marginBottom: 16 }}>
@@ -486,7 +554,22 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
               </div>
             )}
 
-            <button className="btn btn-primario" onClick={confirmarManual} disabled={!/^\d{7}$/.test(codigoManual) || !tallaManual}>
+            <label className="etiqueta">Cantidad</label>
+            <input
+              className="campo"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={cantidadManual}
+              onChange={(e) => setCantidadManual(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && confirmarManual()}
+            />
+
+            <button
+              className="btn btn-primario"
+              onClick={confirmarManual}
+              disabled={!/^\d{7}$/.test(codigoManual) || !tallaManual || !(Number(cantidadManual) > 0)}
+            >
               Agregar
             </button>
           </div>
