@@ -162,6 +162,30 @@ router.post('/admins/:id/resetear-password', manejarAsync(async (req, res) => {
   res.json({ ...datosPublicos(resultado.rows[0]), passwordTemporal });
 }));
 
+// Superadmin le fija a otro admin una clave específica (a diferencia de
+// resetear, que genera una al azar) — por ejemplo si esa persona ya le
+// dijo qué clave quiere usar. No se guarda en texto plano en ningún lado
+// (a propósito: una clave de admin da acceso a borrar inventarios,
+// importar el maestro completo y gestionar otros admins, así que el
+// superadmin no puede "ver" la clave de nadie, solo fijar una nueva).
+router.post('/admins/:id/modificar-password', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const solicitanteId = Number(req.body?.solicitanteId);
+  const passwordNueva = String(req.body?.passwordNueva ?? '');
+  const solicitante = (await pool.query('SELECT rol FROM admins WHERE id = $1', [solicitanteId])).rows[0];
+  if (solicitante?.rol !== 'superadmin') return res.status(403).json({ error: 'requiere_superadmin' });
+  if (id === solicitanteId) return res.status(400).json({ error: 'no_puedes_modificar_tu_propia_clave' });
+  if (passwordNueva.length < 8) return res.status(400).json({ error: 'password_nueva_muy_corta' });
+
+  const passwordHash = await hashClave(passwordNueva);
+  const resultado = await pool.query(
+    `UPDATE admins SET password_hash = $1, debe_cambiar_password = true WHERE id = $2 RETURNING *`,
+    [passwordHash, id]
+  );
+  if (!resultado.rows.length) return res.status(404).json({ error: 'admin_no_encontrado' });
+  res.json(datosPublicos(resultado.rows[0]));
+}));
+
 // Solo el superadmin borra admins — no puede borrarse a sí mismo ni dejar la
 // cuenta sin ningún superadmin (se quedaría sin nadie que pueda arreglarlo).
 router.delete('/admins/:id', manejarAsync(async (req, res) => {

@@ -57,6 +57,8 @@ export const api = {
     solicitar(`/api/auth/admins/${id}?solicitanteId=${solicitanteId}`, { method: 'DELETE' }),
   resetearPasswordAdmin: (id, solicitanteId) =>
     post(`/api/auth/admins/${id}/resetear-password`, { solicitanteId }),
+  modificarPasswordAdmin: (id, solicitanteId, passwordNueva) =>
+    post(`/api/auth/admins/${id}/modificar-password`, { solicitanteId, passwordNueva }),
 
   buscarTiendas: (q) => solicitar(`/api/tiendas${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   obtenerTienda: (edp) => solicitar(`/api/tiendas/${edp}`),

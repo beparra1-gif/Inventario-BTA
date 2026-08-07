@@ -50,6 +50,9 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   // --- Administradores (superadmin) ---
   const [listaAdmins, setListaAdmins] = useState([]);
   const [passwordsGeneradas, setPasswordsGeneradas] = useState([]);
+  const [modificandoClaveId, setModificandoClaveId] = useState(null);
+  const [nuevaClaveAdmin, setNuevaClaveAdmin] = useState('');
+  const [mostrarNuevaClaveAdmin, setMostrarNuevaClaveAdmin] = useState(false);
 
   // --- Mi perfil ---
   const [nombrePerfil, setNombrePerfil] = useState(admin.nombre ?? '');
@@ -450,6 +453,26 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     }
   }
 
+  function iniciarModificarClave(a) {
+    setModificandoClaveId(a.id);
+    setNuevaClaveAdmin('');
+  }
+
+  async function guardarClaveModificada(a) {
+    if (nuevaClaveAdmin.length < 8) {
+      mostrarToast('La clave nueva debe tener al menos 8 caracteres', 'error');
+      return;
+    }
+    try {
+      await api.modificarPasswordAdmin(a.id, admin.id, nuevaClaveAdmin);
+      setModificandoClaveId(null);
+      setNuevaClaveAdmin('');
+      mostrarToast('Clave actualizada — se le va a pedir cambiarla apenas entre', 'ok');
+    } catch {
+      mostrarToast('No se pudo actualizar la clave', 'error');
+    }
+  }
+
   // Mismo mecanismo que compartirPorWhatsapp (participantes), pero para la
   // clave temporal de un admin — sin tienda/inventario de por medio.
   function compartirPasswordAdminPorWhatsapp(nombreOEmail, password) {
@@ -667,33 +690,68 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                 )}
 
                 {listaAdmins.map((a) => (
-                  <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--borde)' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{a.nombre || '(sin nombre)'}{a.id === admin.id ? ' · tú' : ''}</div>
-                      <div style={{ fontSize: 12, color: 'var(--texto-tenue)' }}>{a.email}</div>
+                  <div key={a.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--borde)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{a.nombre || '(sin nombre)'}{a.id === admin.id ? ' · tú' : ''}</div>
+                        <div style={{ fontSize: 12, color: 'var(--texto-tenue)' }}>{a.email}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <select
+                          className="campo"
+                          style={{ marginBottom: 0, width: 'auto', fontSize: 12, padding: '6px 8px' }}
+                          value={a.rol}
+                          disabled={a.id === admin.id}
+                          onChange={(e) => cambiarRolAdmin(a, e.target.value)}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="superadmin">Superadmin</option>
+                        </select>
+                        {a.id !== admin.id && (
+                          <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => iniciarModificarClave(a)}>
+                            Modificar clave
+                          </button>
+                        )}
+                        {a.id !== admin.id && (
+                          <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => resetearPasswordAdminAccion(a)}>
+                            Resetear clave
+                          </button>
+                        )}
+                        {a.id !== admin.id && (
+                          <button className="btn-texto" style={{ padding: 0, color: '#B91C1C', display: 'flex' }} title="Borrar" onClick={() => borrarAdmin(a)}>
+                            <IconoEliminar tamano={16} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                      <select
-                        className="campo"
-                        style={{ marginBottom: 0, width: 'auto', fontSize: 12, padding: '6px 8px' }}
-                        value={a.rol}
-                        disabled={a.id === admin.id}
-                        onChange={(e) => cambiarRolAdmin(a, e.target.value)}
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="superadmin">Superadmin</option>
-                      </select>
-                      {a.id !== admin.id && (
-                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => resetearPasswordAdminAccion(a)}>
-                          Resetear clave
+
+                    {modificandoClaveId === a.id && (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+                        <input
+                          className="campo"
+                          style={{ marginBottom: 0, flex: 1, minWidth: 160 }}
+                          type={mostrarNuevaClaveAdmin ? 'text' : 'password'}
+                          placeholder="Clave nueva (mínimo 8 caracteres)"
+                          value={nuevaClaveAdmin}
+                          onChange={(e) => setNuevaClaveAdmin(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && guardarClaveModificada(a)}
+                          autoFocus
+                        />
+                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => setMostrarNuevaClaveAdmin((v) => !v)}>
+                          {mostrarNuevaClaveAdmin ? 'Ocultar' : 'Mostrar'}
                         </button>
-                      )}
-                      {a.id !== admin.id && (
-                        <button className="btn-texto" style={{ padding: 0, color: '#B91C1C', display: 'flex' }} title="Borrar" onClick={() => borrarAdmin(a)}>
-                          <IconoEliminar tamano={16} />
+                        <button
+                          className="btn btn-secundario btn-chico"
+                          onClick={() => guardarClaveModificada(a)}
+                          disabled={nuevaClaveAdmin.length < 8}
+                        >
+                          Guardar
                         </button>
-                      )}
-                    </div>
+                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => setModificandoClaveId(null)}>
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {listaAdmins.length === 0 && (
