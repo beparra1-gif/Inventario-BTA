@@ -467,11 +467,28 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
       {mostrarManual && (
         <div className="fondo-hoja" onClick={() => setMostrarManual(false)}>
           <div className="hoja" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0 }}>Ingresar manualmente</h3>
-              <button onClick={() => setMostrarManual(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--texto-tenue)' }}>
-                <IconoCerrar tamano={20} />
-              </button>
+            {/* Fijo arriba de la hoja (no se va con el scroll ni queda tapado
+                por el teclado en el celular) para poder revisar de un
+                vistazo qué se está por agregar, sin tener que bajar. */}
+            <div className="hoja-fija-arriba">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>Ingresar manualmente</h3>
+                <button onClick={() => setMostrarManual(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--texto-tenue)' }}>
+                  <IconoCerrar tamano={20} />
+                </button>
+              </div>
+              <div className="resumen-ingreso-manual">
+                <strong>{codigoManual ? formatearCodigo(codigoManual) : 'Código —'}</strong>
+                <span>
+                  Talla{' '}
+                  <strong>
+                    {tallaManual ? previaManual?.tallaReal || (tallaManual === '01' ? 'única' : `${tallaManual}*`) : '—'}
+                  </strong>
+                </span>
+                <span>
+                  Cant. <strong>{cantidadManual || '—'}</strong>
+                </span>
+              </div>
             </div>
 
             <label className="etiqueta">Código de producto (7 dígitos)</label>

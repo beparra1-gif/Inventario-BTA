@@ -2,7 +2,12 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0" />
+    <!-- interactive-widget=resizes-content: en Android Chrome hace que el
+         layout (y por lo tanto el 100dvh de .pantalla/.hoja) se achique
+         cuando aparece el teclado, en vez de que el teclado tape contenido
+         por encima sin que la página se entere. Los navegadores que no lo
+         entienden lo ignoran sin problema. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#E20613" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
