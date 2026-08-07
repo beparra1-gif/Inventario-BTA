@@ -150,6 +150,7 @@ router.post('/admins/:id/resetear-password', manejarAsync(async (req, res) => {
   const solicitanteId = Number(req.body?.solicitanteId);
   const solicitante = (await pool.query('SELECT rol FROM admins WHERE id = $1', [solicitanteId])).rows[0];
   if (solicitante?.rol !== 'superadmin') return res.status(403).json({ error: 'requiere_superadmin' });
+  if (id === solicitanteId) return res.status(400).json({ error: 'no_puedes_resetear_tu_propia_clave' });
 
   const passwordTemporal = Math.random().toString(36).slice(2, 10);
   const passwordHash = await hashClave(passwordTemporal);
