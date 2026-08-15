@@ -10,6 +10,7 @@ const router = Router();
 router.post('/', manejarAsync(async (req, res) => {
   const participanteId = Number(req.body?.participanteId);
   const numeroTax = Number(req.body?.numeroTax);
+  const nombre = req.body?.nombre ? String(req.body.nombre).trim().slice(0, 120) || null : null;
   if (!Number.isInteger(participanteId) || !Number.isInteger(numeroTax)) {
     return res.status(400).json({ error: 'datos_invalidos' });
   }
@@ -42,8 +43,8 @@ router.post('/', manejarAsync(async (req, res) => {
 
   const nuevo = (
     await pool.query(
-      `INSERT INTO taxes (inventario_id, participante_id, numero_tax) VALUES ($1, $2, $3) RETURNING *`,
-      [participante.inventario_id, participanteId, numeroTax]
+      `INSERT INTO taxes (inventario_id, participante_id, numero_tax, nombre) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [participante.inventario_id, participanteId, numeroTax, nombre]
     )
   ).rows[0];
 
@@ -79,8 +80,10 @@ async function obtenerTaxConInventario(taxId) {
 async function autorizarSobreTax(req, res, tax) {
   const adminId = Number(req.body?.adminId ?? req.query.adminId);
   if (Number.isInteger(adminId)) {
-    const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-    if (admin) return true;
+    const admin = (await pool.query('SELECT id, rol FROM admins WHERE id = $1', [adminId])).rows[0];
+    // Auditor no administra tax de otros — solo consulta y valida (ver
+    // routes/auditoria.js).
+    if (admin && admin.rol !== 'auditor') return true;
   }
   const participanteId = Number(req.body?.participanteId ?? req.query.participanteId);
   if (Number.isInteger(participanteId) && participanteId === tax.participante_id) {
@@ -126,6 +129,22 @@ router.delete('/:id/capturas', manejarAsync(async (req, res) => {
     await pool.query(`UPDATE taxes SET estado = 'abierto', cerrado_en = NULL WHERE id = $1 RETURNING *`, [id])
   ).rows[0];
   req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:reiniciado', { id });
+  res.json(actualizado);
+}));
+
+// El capturador (o el admin) le pone/cambia el nombre o ubicación al tax
+// que tiene asignado (ej. "Bodega 2") — solo para identificarlo mejor en
+// las listas, no afecta la numeración ni el rango.
+router.put('/:id/nombre', manejarAsync(async (req, res) => {
+  const id = Number(req.params.id);
+  const nombre = req.body?.nombre != null ? String(req.body.nombre).trim().slice(0, 120) || null : null;
+
+  const tax = await obtenerTaxConInventario(id);
+  if (!tax) return res.status(404).json({ error: 'tax_no_encontrado' });
+  if (tax.inventario_estado !== 'abierto') return res.status(409).json({ error: 'inventario_cerrado' });
+
+  const actualizado = (await pool.query('UPDATE taxes SET nombre = $1 WHERE id = $2 RETURNING *', [nombre, id])).rows[0];
+  req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:actualizado', actualizado);
   res.json(actualizado);
 }));
 

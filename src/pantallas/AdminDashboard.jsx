@@ -37,6 +37,8 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const [perfiles, setPerfiles] = useState([]);
   const [nombreNuevoPerfil, setNombreNuevoPerfil] = useState('');
   const [clavesGeneradas, setClavesGeneradas] = useState([]);
+  const [validandoTaxId, setValidandoTaxId] = useState(null);
+  const [cantidadValidacion, setCantidadValidacion] = useState('');
 
   // --- Modo captura del admin (agregar artículos con su propio tax) ---
   const [adminParticipante, setAdminParticipante] = useState(null);
@@ -174,17 +176,25 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
         'error'
       );
     };
+    const alInconsistenciaAuditoria = ({ alias, nombre, numeroTax, cantidadCapturada, cantidadValidada }) => {
+      mostrarToast(
+        `Auditoría: tax ${numeroTax} de ${nombre || alias} no calza — capturado ${cantidadCapturada}, validado ${cantidadValidada}`,
+        'error'
+      );
+    };
     ['captura:nueva', 'captura:actualizada', 'captura:eliminada', 'tax:abierto', 'tax:cerrado'].forEach((evento) =>
       socket.on(evento, refrescar)
     );
     socket.on('alerta:capturador-errores', alAlertaErrores);
     socket.on('solicitud:modificar', alSolicitudModificar);
+    socket.on('auditoria:inconsistencia', alInconsistenciaAuditoria);
     return () => {
       ['captura:nueva', 'captura:actualizada', 'captura:eliminada', 'tax:abierto', 'tax:cerrado'].forEach((evento) =>
         socket.off(evento, refrescar)
       );
       socket.off('alerta:capturador-errores', alAlertaErrores);
       socket.off('solicitud:modificar', alSolicitudModificar);
+      socket.off('auditoria:inconsistencia', alInconsistenciaAuditoria);
     };
   }, [inventario]);
 
@@ -265,7 +275,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   async function regenerarClave(perfil) {
     if (
       perfil.clave &&
-      !window.confirm(`Esto genera una clave nueva para ${perfil.nombre || perfil.alias} — la anterior deja de funcionar. ¿Seguro?`)
+      !window.confirm(`Esto restablece la clave de ${perfil.nombre || perfil.alias} a la del inventario. ¿Seguro?`)
     ) {
       return;
     }
@@ -273,7 +283,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
       const r = await api.regenerarClaveParticipante(perfil.id, admin.id);
       cargarPerfiles(inventario.id);
       setClavesGeneradas((actuales) => [...actuales, { nombre: perfil.nombre, alias: perfil.alias, clave: r.clave }]);
-      mostrarToast('Clave nueva generada', 'ok');
+      mostrarToast('Clave restablecida', 'ok');
     } catch {
       mostrarToast('No se pudo generar la clave', 'error');
     }
@@ -396,6 +406,27 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
       mostrarToast('Tax reiniciado', 'ok');
     } catch {
       mostrarToast('No se pudo reiniciar el tax', 'error');
+    }
+  }
+
+  function iniciarValidarTax(p) {
+    setValidandoTaxId(p.tax_id);
+    setCantidadValidacion(String(p.unidades));
+  }
+
+  async function confirmarValidacionTax(p) {
+    const cantidad = Number(cantidadValidacion);
+    if (!Number.isInteger(cantidad) || cantidad < 0) return;
+    try {
+      const r = await api.auditoriaValidarTax(p.tax_id, admin.id, cantidad);
+      setValidandoTaxId(null);
+      cargarResumen(inventario.id);
+      mostrarToast(
+        r.inconsistente ? `Inconsistencia: se capturaron ${r.cantidadCapturada}, se validaron ${cantidad}` : 'Validado, todo calza',
+        r.inconsistente ? 'error' : 'ok'
+      );
+    } catch {
+      mostrarToast('No se pudo validar el tax', 'error');
     }
   }
 
@@ -547,6 +578,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
       <select className="campo" value={rolNuevoAdmin} onChange={(e) => setRolNuevoAdmin(e.target.value)}>
         <option value="admin">Admin</option>
         <option value="superadmin">Superadmin</option>
+        <option value="auditor">Auditor</option>
       </select>
       <button className="btn btn-secundario btn-chico" style={{ width: '100%' }} onClick={invitarAdmin} disabled={!emailNuevoAdmin}>
         Agregar
@@ -706,6 +738,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                         >
                           <option value="admin">Admin</option>
                           <option value="superadmin">Superadmin</option>
+                          <option value="auditor">Auditor</option>
                         </select>
                         {a.id !== admin.id && (
                           <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => iniciarModificarClave(a)}>
@@ -1012,7 +1045,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                         )}
                         <button
                           onClick={() => regenerarClave(p)}
-                          title={p.clave ? 'Generar una clave nueva' : 'Esta clave es de antes de poder verse — genera una nueva'}
+                          title={p.clave ? 'Restablecer a la clave del inventario' : 'Esta clave es de antes de poder verse — restablecer'}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex', padding: 0 }}
                         >
                           ↻
@@ -1041,14 +1074,45 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                       <h3 style={{ marginTop: 0 }}>Progreso por participante</h3>
                       <div style={{ overflowX: 'auto', marginBottom: 24 }}>
                         <table className="tabla-resumen">
-                          <thead><tr><th>Nombre</th><th>Tax</th><th>Estado</th><th>Unidades</th><th>Acciones</th></tr></thead>
+                          <thead><tr><th>Nombre</th><th>Tax</th><th>Estado</th><th>Unidades</th><th>Validación</th><th>Acciones</th></tr></thead>
                           <tbody>
                             {resumen.participantes.map((p) => (
                               <tr key={`${p.id}-${p.tax_id ?? 'sin-tax'}`}>
                                 <td>{p.nombre || p.alias}</td>
-                                <td>{p.numero_tax ?? '—'}</td>
+                                <td>{p.numero_tax ?? '—'}{p.tax_nombre && <div style={{ fontSize: 11, color: 'var(--texto-tenue)' }}>{p.tax_nombre}</div>}</td>
                                 <td>{p.tax_estado ?? '—'}</td>
                                 <td>{p.unidades}</td>
+                                <td>
+                                  {!p.tax_id ? (
+                                    '—'
+                                  ) : validandoTaxId === p.tax_id ? (
+                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                      <input
+                                        className="campo"
+                                        style={{ marginBottom: 0, width: 64, padding: '4px 6px', fontSize: 12 }}
+                                        type="number"
+                                        value={cantidadValidacion}
+                                        onChange={(e) => setCantidadValidacion(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && confirmarValidacionTax(p)}
+                                        autoFocus
+                                      />
+                                      <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => confirmarValidacionTax(p)}>OK</button>
+                                      <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => setValidandoTaxId(null)}>✕</button>
+                                    </div>
+                                  ) : p.validado_en ? (
+                                    p.cantidad_validada === p.unidades ? (
+                                      <span style={{ color: 'var(--exito)', fontWeight: 700 }}>✓ OK</span>
+                                    ) : (
+                                      <span style={{ color: '#B91C1C', fontWeight: 700 }} title="Inconsistencia">
+                                        ⚠ {p.cantidad_validada} vs {p.unidades}
+                                      </span>
+                                    )
+                                  ) : p.tax_estado === 'cerrado' ? (
+                                    <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => iniciarValidarTax(p)}>Validar</button>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
                                 <td>
                                   {/* Mientras el inventario esté cerrado no se puede tocar nada de un
                                       tax puntual — hay que reabrirlo completo ("Reabrir para corregir

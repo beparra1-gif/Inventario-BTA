@@ -88,7 +88,8 @@ export const api = {
   solicitarModificacion: (participanteId, numeroTax) =>
     post(`/api/participantes/${participanteId}/solicitar-modificacion`, { numeroTax }),
 
-  abrirTax: (participanteId, numeroTax) => post('/api/taxes', { participanteId, numeroTax }),
+  abrirTax: (participanteId, numeroTax, nombre) => post('/api/taxes', { participanteId, numeroTax, nombre }),
+  renombrarTax: (id, nombre) => solicitar(`/api/taxes/${id}/nombre`, { method: 'PUT', body: JSON.stringify({ nombre }) }),
   cerrarTax: (id) => post(`/api/taxes/${id}/cerrar`, {}),
   // { adminId } para el panel admin o { participanteId } para que el propio
   // capturador reabra/borre su propio tax sin depender del admin.
@@ -115,4 +116,12 @@ export const api = {
 
   subirMaestroTiendas: (adminId, archivo) => subirArchivo('/api/maestros/tiendas', adminId, archivo),
   subirMaestroProductos: (adminId, archivo) => subirArchivo('/api/maestros/productos', adminId, archivo),
+
+  // Auditoría: admin, superadmin o auditor pueden usar estas tres — ver
+  // backend/routes/auditoria.js.
+  auditoriaTaxesDeInventario: (inventarioId, auditorId) =>
+    solicitar(`/api/auditoria/inventarios/${inventarioId}/taxes?auditorId=${auditorId}`),
+  auditoriaDetalleTax: (taxId, auditorId) => solicitar(`/api/auditoria/taxes/${taxId}?auditorId=${auditorId}`),
+  auditoriaValidarTax: (taxId, auditorId, cantidadValidada) =>
+    post(`/api/auditoria/taxes/${taxId}/validar`, { auditorId, cantidadValidada }),
 };

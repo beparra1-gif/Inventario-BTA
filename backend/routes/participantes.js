@@ -11,10 +11,19 @@ function sinClaveHash({ clave_hash, clave_texto, ...resto }) {
   return resto;
 }
 
+// Admin o superadmin, no auditor (el auditor solo consulta y valida tax
+// cerrados, no administra personal de captura).
+async function exigirGestor(adminId) {
+  if (!Number.isInteger(adminId)) return null;
+  const admin = (await pool.query('SELECT id, rol FROM admins WHERE id = $1', [adminId])).rows[0];
+  return admin && admin.rol !== 'auditor' ? admin : null;
+}
+
 // Alias nuevo -> siguiente rango de 100 disponible (1-100, 101-200, ...) +
-// clave numérica propia (para que cada persona tenga la suya, no una
-// compartida). Alias existente -> se reusa tal cual (la clave ya asignada
-// no se toca) para poder seguir capturando desde otro dispositivo — se
+// clave = el número de ese inventario (compartida por todos los que
+// capturan ahí, para no tener que repartir un PIN distinto a cada
+// persona). Alias existente -> se reusa tal cual (la clave ya asignada no
+// se toca) para poder seguir capturando desde otro dispositivo — se
 // devuelve su clave_texto guardada, no una nueva.
 async function obtenerOCrearParticipante(cliente, inventarioId, alias, nombre = null) {
   const existente = (
@@ -25,14 +34,14 @@ async function obtenerOCrearParticipante(cliente, inventarioId, alias, nombre = 
   ).rows[0];
   if (existente) return { participante: existente, claveEnClaro: existente.clave_texto };
 
-  const { rows } = await cliente.query(
-    'SELECT COUNT(*)::int AS total FROM participantes WHERE inventario_id = $1',
-    [inventarioId]
-  );
-  const taxMin = rows[0].total * RANGO_TAX + 1;
+  const [conteo, inventario] = await Promise.all([
+    cliente.query('SELECT COUNT(*)::int AS total FROM participantes WHERE inventario_id = $1', [inventarioId]),
+    cliente.query('SELECT numero_inventario FROM inventarios WHERE id = $1', [inventarioId]),
+  ]);
+  const taxMin = conteo.rows[0].total * RANGO_TAX + 1;
   const taxMax = taxMin + RANGO_TAX - 1;
 
-  const claveEnClaro = generarClaveProvisoria();
+  const claveEnClaro = inventario.rows[0]?.numero_inventario || generarClaveProvisoria();
   const claveHash = await hashClave(claveEnClaro);
 
   const participante = (
@@ -85,9 +94,7 @@ router.post('/admin', manejarAsync(async (req, res) => {
   const nombre = req.body?.nombre ? String(req.body.nombre).trim() : null;
 
   if (!Number.isInteger(inventarioId) || !alias) return res.status(400).json({ error: 'datos_incompletos' });
-
-  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const cliente = await pool.connect();
   try {
@@ -103,23 +110,29 @@ router.post('/admin', manejarAsync(async (req, res) => {
   }
 }));
 
-// El admin resetea la clave de alguien (perdida, olvidada, o de un perfil
-// creado antes de que la clave quedara guardada en texto — ver migración
-// 005) sin tener que borrar el perfil completo y perder todo lo que ya
+// El admin restablece la clave de alguien a la del inventario (por si
+// quedó con un PIN de antes de este cambio, o alguien la escribió mal)
+// sin tener que borrar el perfil completo y perder todo lo que ya
 // capturó: solo cambia la clave, el resto queda intacto.
 router.post('/:id/regenerar-clave', manejarAsync(async (req, res) => {
   const adminId = Number(req.body?.adminId);
-  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const id = Number(req.params.id);
-  const claveEnClaro = generarClaveProvisoria();
+  const participante = (
+    await pool.query(
+      `SELECT i.numero_inventario FROM participantes p JOIN inventarios i ON i.id = p.inventario_id WHERE p.id = $1`,
+      [id]
+    )
+  ).rows[0];
+  if (!participante) return res.status(404).json({ error: 'participante_no_encontrado' });
+
+  const claveEnClaro = participante.numero_inventario || generarClaveProvisoria();
   const claveHash = await hashClave(claveEnClaro);
   const resultado = await pool.query(
     'UPDATE participantes SET clave_hash = $1, clave_texto = $2 WHERE id = $3 RETURNING *',
     [claveHash, claveEnClaro, id]
   );
-  if (!resultado.rows.length) return res.status(404).json({ error: 'participante_no_encontrado' });
   res.json({ ...sinClaveHash(resultado.rows[0]), clave: claveEnClaro });
 }));
 
@@ -129,8 +142,7 @@ router.post('/:id/regenerar-clave', manejarAsync(async (req, res) => {
 // (lo hace el frontend, esto solo ejecuta).
 router.delete('/:id', manejarAsync(async (req, res) => {
   const adminId = Number(req.query.adminId);
-  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const id = Number(req.params.id);
   const resultado = await pool.query('DELETE FROM participantes WHERE id = $1 RETURNING id', [id]);
@@ -156,7 +168,8 @@ router.get('/:id/resumen', manejarAsync(async (req, res) => {
       [id]
     ),
     pool.query(
-      `SELECT t.id AS tax_id, t.numero_tax, t.estado,
+      `SELECT t.id AS tax_id, t.numero_tax, t.nombre, t.estado,
+              t.cantidad_validada, t.validado_en,
               COALESCE(SUM(c.cantidad), 0)::int AS unidades,
               COALESCE(SUM(c.cantidad) FILTER (WHERE c.reconocido = false), 0)::int AS unidades_no_reconocidas
        FROM taxes t

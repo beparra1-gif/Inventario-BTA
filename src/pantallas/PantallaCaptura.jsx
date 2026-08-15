@@ -45,6 +45,8 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
   const [editando, setEditando] = useState(null);
   const [valorEdicion, setValorEdicion] = useState('');
   const [enLinea, setEnLinea] = useState(navigator.onLine);
+  const [editandoNombreTax, setEditandoNombreTax] = useState(false);
+  const [nombreTaxInput, setNombreTaxInput] = useState(tax.nombre || '');
 
   const taxCerrado = tax.estado === 'cerrado';
   // El admin puede cerrar el inventario completo sin que eso cierre los tax
@@ -86,6 +88,9 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
   useEffect(() => {
     cargarCapturas();
     setEditando(null);
+    setNombreTaxInput(tax.nombre || '');
+    setEditandoNombreTax(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tax.id]);
 
   // Lista de todos los tax del participante, para el panel de navegación —
@@ -265,6 +270,16 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
     }
   }
 
+  async function guardarNombreTax() {
+    try {
+      const actualizado = await api.renombrarTax(tax.id, nombreTaxInput.trim());
+      setEditandoNombreTax(false);
+      onCambiarTax(actualizado);
+    } catch {
+      mostrarToast('No se pudo guardar el nombre del tax', 'error');
+    }
+  }
+
   async function cerrarTax() {
     if (!window.confirm(`¿Cerrar tax ${tax.numero_tax} con ${totalUnidades} unidad${totalUnidades === 1 ? '' : 'es'}? Ya no vas a poder agregar más ahí a menos que lo reabras.`)) return;
     try {
@@ -345,8 +360,9 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
             {misTax.map((t) => (
               <button
                 key={t.tax_id}
-                onClick={() => onCambiarTax({ id: t.tax_id, numero_tax: t.numero_tax, estado: t.estado })}
+                onClick={() => onCambiarTax({ id: t.tax_id, numero_tax: t.numero_tax, nombre: t.nombre, estado: t.estado })}
                 className="btn-chico"
+                title={t.nombre || undefined}
                 style={{
                   flexShrink: 0,
                   borderRadius: 8,
@@ -367,6 +383,28 @@ export function PantallaCaptura({ acceso, participante, tax, onCambiarTax, onVol
             <div>
               <h1 style={{ margin: 0, fontSize: '1.3em', fontWeight: 700 }}>Tax {tax.numero_tax}</h1>
               <p style={{ margin: 0, fontSize: 12, color: 'var(--texto-tenue)' }}>{participante.nombre || participante.alias}</p>
+              {editandoNombreTax ? (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                  <input
+                    className="campo"
+                    style={{ marginBottom: 0, padding: '6px 10px', fontSize: 12, width: 160 }}
+                    placeholder="Nombre o ubicación"
+                    value={nombreTaxInput}
+                    onChange={(e) => setNombreTaxInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && guardarNombreTax()}
+                    autoFocus
+                  />
+                  <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={guardarNombreTax}>Guardar</button>
+                  <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => setEditandoNombreTax(false)}>Cancelar</button>
+                </div>
+              ) : (
+                <p
+                  style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--primario)', cursor: soloLectura ? 'default' : 'pointer' }}
+                  onClick={() => !soloLectura && setEditandoNombreTax(true)}
+                >
+                  {tax.nombre || (!soloLectura && '+ Agregar nombre o ubicación')}
+                </p>
+              )}
             </div>
             <div style={{ textAlign: 'center', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '6px 14px' }}>
               <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{totalUnidades}</div>

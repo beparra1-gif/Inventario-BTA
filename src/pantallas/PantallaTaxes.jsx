@@ -173,17 +173,23 @@ export function PantallaTaxes({ acceso, participante, onAbrirTax, onSalir }) {
                       <div key={t.tax_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: '10px 12px', gap: 8 }}>
                         <div style={{ minWidth: 0 }}>
                           <strong>Tax {t.numero_tax}</strong>
+                          {t.nombre && <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--primario)' }}>{t.nombre}</span>}
                           <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--texto-tenue)' }}>
                             {t.unidades} unidad{t.unidades === 1 ? '' : 'es'}
                             {t.unidades_no_reconocidas > 0 && ` · ${t.unidades_no_reconocidas} sin reconocer`}
                           </span>
+                          {t.validado_en && t.cantidad_validada !== t.unidades && (
+                            <div style={{ fontSize: 12, color: '#B91C1C', marginTop: 2 }}>
+                              ⚠ Auditoría: se validaron {t.cantidad_validada}, hay {t.unidades} capturadas — avisale al admin.
+                            </div>
+                          )}
                         </div>
                         {t.estado === 'abierto' ? (
-                          <button className="btn-texto" style={{ padding: 0, flexShrink: 0 }} onClick={() => onAbrirTax({ id: t.tax_id, numero_tax: t.numero_tax, estado: t.estado })}>
+                          <button className="btn-texto" style={{ padding: 0, flexShrink: 0 }} onClick={() => onAbrirTax({ id: t.tax_id, numero_tax: t.numero_tax, nombre: t.nombre, estado: t.estado })}>
                             {inventarioCerrado ? 'Ver' : 'Continuar'}
                           </button>
                         ) : inventarioCerrado ? (
-                          <button className="btn-texto" style={{ padding: 0, flexShrink: 0 }} onClick={() => onAbrirTax({ id: t.tax_id, numero_tax: t.numero_tax, estado: t.estado })}>
+                          <button className="btn-texto" style={{ padding: 0, flexShrink: 0 }} onClick={() => onAbrirTax({ id: t.tax_id, numero_tax: t.numero_tax, nombre: t.nombre, estado: t.estado })}>
                             Ver
                           </button>
                         ) : (

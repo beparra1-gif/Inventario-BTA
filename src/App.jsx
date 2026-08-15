@@ -8,6 +8,7 @@ import { PantallaTaxes } from './pantallas/PantallaTaxes.jsx';
 import { PantallaCaptura } from './pantallas/PantallaCaptura.jsx';
 import { AdminLogin } from './pantallas/AdminLogin.jsx';
 import { AdminDashboard } from './pantallas/AdminDashboard.jsx';
+import { AuditorDashboard } from './pantallas/AuditorDashboard.jsx';
 import { CambiarPassword } from './pantallas/CambiarPassword.jsx';
 import './estilos/app.css';
 
@@ -87,6 +88,7 @@ function PanelAdmin({ onVolver }) {
   const [admin, setAdmin] = useEstadoPersistente('inv-bta:admin', null);
   if (!admin) return <AdminLogin onLogin={setAdmin} onVolver={onVolver} />;
   if (admin.debeCambiarPassword) return <CambiarPassword admin={admin} onListo={setAdmin} />;
+  if (admin.rol === 'auditor') return <AuditorDashboard admin={admin} onSalir={() => setAdmin(null)} />;
   return <AdminDashboard admin={admin} onSalir={() => setAdmin(null)} onActualizarAdmin={setAdmin} />;
 }
 

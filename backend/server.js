@@ -11,6 +11,7 @@ import rutasParticipantes from './routes/participantes.js';
 import rutasTaxes from './routes/taxes.js';
 import rutasCapturas from './routes/capturas.js';
 import rutasArticulos from './routes/articulos.js';
+import rutasAuditoria from './routes/auditoria.js';
 
 dotenv.config();
 
@@ -51,6 +52,7 @@ app.use('/api/participantes', rutasParticipantes);
 app.use('/api/taxes', rutasTaxes);
 app.use('/api/capturas', rutasCapturas);
 app.use('/api/articulos', rutasArticulos);
+app.use('/api/auditoria', rutasAuditoria);
 
 app.use((error, req, res, next) => {
   console.error(error);

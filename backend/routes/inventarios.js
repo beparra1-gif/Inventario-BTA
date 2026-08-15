@@ -14,6 +14,14 @@ async function obtenerAdmin(adminId) {
   return (await pool.query('SELECT rol FROM admins WHERE id = $1', [adminId])).rows[0] ?? null;
 }
 
+// Para crear/cerrar/borrar/reabrir inventarios y gestionar personal: admin
+// o superadmin, no auditor (el auditor solo consulta y valida, no
+// administra nada — ver routes/auditoria.js para lo que sí puede hacer).
+async function exigirGestor(adminId) {
+  const admin = await obtenerAdmin(adminId);
+  return admin && admin.rol !== 'auditor' ? admin : null;
+}
+
 // Admin: crea un inventario para una tienda. Ya no pide/genera una clave
 // compartida — cada capturador tiene la suya propia (ver routes/participantes.js,
 // migración 004). El acceso de participantes es solo EDP + su alias/clave personal.
@@ -25,6 +33,7 @@ router.post('/', manejarAsync(async (req, res) => {
   if (!numeroInventario || !Number.isInteger(edp) || !Number.isInteger(creadoPorAdminId)) {
     return res.status(400).json({ error: 'datos_incompletos' });
   }
+  if (!(await exigirGestor(creadoPorAdminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   try {
     const resultado = await pool.query(
@@ -56,7 +65,10 @@ router.get('/', manejarAsync(async (req, res) => {
     parametros.push(`%${busqueda}%`);
     condiciones.push(`(i.numero_inventario ILIKE $${parametros.length} OR t.glosa ILIKE $${parametros.length} OR CAST(i.edp AS TEXT) LIKE $${parametros.length})`);
   }
-  if (admin.rol !== 'superadmin') {
+  // Solo el rol "admin" queda acotado a lo suyo — superadmin y auditor ven
+  // todos los inventarios (el auditor los necesita ver todos para poder
+  // elegir cuál revisar).
+  if (admin.rol === 'admin') {
     parametros.push(adminId);
     condiciones.push(`i.creado_por_admin_id = $${parametros.length}`);
   }
@@ -83,7 +95,10 @@ router.get('/recientes', manejarAsync(async (req, res) => {
   const limite = Math.min(Number(req.query.limite) || 2, 10);
   const parametros = [limite];
   let filtroCreador = '';
-  if (admin.rol !== 'superadmin') {
+  // Solo el rol "admin" queda acotado a lo suyo — superadmin y auditor ven
+  // todos los inventarios (el auditor los necesita ver todos para poder
+  // elegir cuál revisar).
+  if (admin.rol === 'admin') {
     parametros.push(adminId);
     filtroCreador = 'WHERE i.creado_por_admin_id = $2';
   }
@@ -176,8 +191,7 @@ router.post('/:id/cerrar', manejarAsync(async (req, res) => {
 // y routes/taxes.js), ni siquiera con la clave — solo el admin lo ve/toca.
 router.post('/:id/reabrir', manejarAsync(async (req, res) => {
   const adminId = Number(req.body?.adminId);
-  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const id = Number(req.params.id);
   const resultado = await pool.query(
@@ -196,8 +210,7 @@ router.post('/:id/reabrir', manejarAsync(async (req, res) => {
 // contra lo capturado. Se limpia solo si lo vuelven a reabrir (ver arriba).
 router.post('/:id/verificar', manejarAsync(async (req, res) => {
   const adminId = Number(req.body?.adminId);
-  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const id = Number(req.params.id);
   const resultado = await pool.query(
@@ -217,7 +230,8 @@ router.get('/:id/resumen', manejarAsync(async (req, res) => {
   const [participantes, capturas] = await Promise.all([
     pool.query(
       `SELECT p.id, p.alias, p.nombre, p.tax_min, p.tax_max,
-              t.id AS tax_id, t.numero_tax, t.estado AS tax_estado,
+              t.id AS tax_id, t.numero_tax, t.nombre AS tax_nombre, t.estado AS tax_estado,
+              t.cantidad_validada, t.validado_en,
               COALESCE(SUM(c.cantidad), 0)::int AS unidades
        FROM participantes p
        LEFT JOIN taxes t ON t.participante_id = p.id
@@ -280,9 +294,7 @@ router.get('/:id/exportar', manejarAsync(async (req, res) => {
 // se puede deshacer, por eso el frontend pide confirmación antes de llamar.
 router.delete('/:id', manejarAsync(async (req, res) => {
   const adminId = Number(req.query.adminId);
-  if (!Number.isInteger(adminId)) return res.status(403).json({ error: 'requiere_admin' });
-  const admin = (await pool.query('SELECT id FROM admins WHERE id = $1', [adminId])).rows[0];
-  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const id = Number(req.params.id);
   const resultado = await pool.query('DELETE FROM inventarios WHERE id = $1 RETURNING id', [id]);

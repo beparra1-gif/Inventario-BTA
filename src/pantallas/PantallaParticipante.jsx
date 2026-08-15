@@ -4,9 +4,10 @@ import { useToast } from '../contexto/ToastContext.jsx';
 import { EncabezadoInventario } from '../componentes/EncabezadoInventario.jsx';
 import { IconoCandado } from '../componentes/Iconos.jsx';
 
-// Cada capturador tiene su propia sigla + clave numérica personal (no una
-// clave de inventario compartida) — evita que se mezclen o que alguien
-// entre sin querer al perfil de otra persona.
+// Cada capturador entra con su sigla + la clave del inventario (el mismo
+// número de inventario, compartida por todos los que capturan ahí — no hay
+// que repartir un PIN distinto a cada persona). La sigla sigue siendo
+// individual para no mezclar el trabajo de nadie.
 export function PantallaParticipante({ acceso, onListo, onVolver }) {
   const mostrarToast = useToast();
   const [perfiles, setPerfiles] = useState(null);
@@ -60,13 +61,13 @@ export function PantallaParticipante({ acceso, onListo, onVolver }) {
                 ))}
               </div>
 
-              <label className="etiqueta">Tu clave personal</label>
+              <label className="etiqueta">Clave del inventario</label>
               <div className="campo" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px' }}>
                 <IconoCandado tamano={18} />
                 <input
                   type="password"
                   inputMode="numeric"
-                  placeholder="Clave numérica"
+                  placeholder="N° de inventario"
                   value={clave}
                   onChange={(e) => setClave(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && entrar()}

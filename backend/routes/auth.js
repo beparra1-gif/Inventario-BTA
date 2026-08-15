@@ -73,7 +73,7 @@ router.post('/admins', manejarAsync(async (req, res) => {
   const solicitanteId = Number(req.body?.solicitanteId);
   const email = String(req.body?.email ?? '').trim().toLowerCase();
   const nombre = String(req.body?.nombre ?? '').trim() || null;
-  const rol = req.body?.rol === 'superadmin' ? 'superadmin' : 'admin';
+  const rol = ['superadmin', 'auditor'].includes(req.body?.rol) ? req.body.rol : 'admin';
 
   const solicitante = (await pool.query('SELECT rol FROM admins WHERE id = $1', [solicitanteId])).rows[0];
   if (solicitante?.rol !== 'superadmin') return res.status(403).json({ error: 'requiere_superadmin' });
@@ -126,7 +126,7 @@ router.put('/admins/:id', manejarAsync(async (req, res) => {
     campos.push(`nombre = $${campos.length + 1}`);
     valores.push(String(req.body.nombre).trim() || null);
   }
-  if (esSuperadmin && solicitante.id !== id && ['admin', 'superadmin'].includes(req.body?.rol)) {
+  if (esSuperadmin && solicitante.id !== id && ['admin', 'superadmin', 'auditor'].includes(req.body?.rol)) {
     campos.push(`rol = $${campos.length + 1}`);
     valores.push(req.body.rol);
   }
