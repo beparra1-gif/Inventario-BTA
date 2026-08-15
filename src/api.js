@@ -124,4 +124,10 @@ export const api = {
   auditoriaDetalleTax: (taxId, auditorId) => solicitar(`/api/auditoria/taxes/${taxId}?auditorId=${auditorId}`),
   auditoriaValidarTax: (taxId, auditorId, cantidadValidada) =>
     post(`/api/auditoria/taxes/${taxId}/validar`, { auditorId, cantidadValidada }),
+
+  // Cruce contra el archivo de cierre de stock — solo admin/superadmin.
+  cargarStock: (inventarioId, adminId, archivo) => subirArchivo(`/api/stock/${inventarioId}/cargar`, adminId, archivo),
+  diferenciasStock: (inventarioId, adminId) => solicitar(`/api/stock/${inventarioId}/diferencias?adminId=${adminId}`),
+  marcarRevisadoStock: (inventarioId, adminId, codigo, talla) =>
+    post(`/api/stock/${inventarioId}/revisar`, { adminId, codigo, talla }),
 };

@@ -1,0 +1,199 @@
+import { Router } from 'express';
+import multer from 'multer';
+import pool from '../db.js';
+import { manejarAsync } from '../utils/manejarAsync.js';
+import { urlFotoMinuscula } from '../utils/fotos.js';
+
+const router = Router();
+const subida = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+// Cruce de cierre: solo admin/superadmin (no auditor — el auditor valida
+// tax uno por uno, esto es una herramienta de gestión aparte).
+async function exigirGestor(adminId) {
+  if (!Number.isInteger(adminId)) return null;
+  const admin = (await pool.query('SELECT id, rol FROM admins WHERE id = $1', [adminId])).rows[0];
+  return admin && admin.rol !== 'auditor' ? admin : null;
+}
+
+// El archivo trae "codigo;talla;cantidad", una línea por unidad física
+// (mismo formato que el .txt que exporta este sistema) o ya con la
+// cantidad sumada — cualquiera de los dos casos se soporta sumando todo
+// por código+talla acá mismo.
+function parsearStock(texto) {
+  const porClave = new Map();
+  for (const lineaCruda of texto.split(/\r?\n/)) {
+    const linea = lineaCruda.trim();
+    if (!linea) continue;
+    const partes = linea.split(';').map((p) => p.trim()).filter(Boolean);
+    if (partes.length < 3) continue;
+    const [codigo, talla, cantidadTexto] = partes;
+    if (!/^\d{1,7}$/.test(codigo) || !/^\d{1,2}$/.test(talla)) continue;
+    const cantidad = Number(cantidadTexto);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) continue;
+    const clave = `${codigo.padStart(7, '0')}-${talla.padStart(2, '0')}`;
+    const previo = porClave.get(clave);
+    porClave.set(clave, {
+      codigo: codigo.padStart(7, '0'),
+      talla: talla.padStart(2, '0'),
+      cantidad: (previo?.cantidad ?? 0) + cantidad,
+    });
+  }
+  return [...porClave.values()];
+}
+
+// Cada carga reemplaza entera la referencia vigente del inventario — un
+// reintento o una corrección del archivo no debe dejar basura mezclada de
+// la carga anterior.
+router.post('/:inventarioId/cargar', subida.single('archivo'), manejarAsync(async (req, res) => {
+  const adminId = Number(req.body?.adminId);
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
+  if (!req.file) return res.status(400).json({ error: 'archivo_requerido' });
+
+  const inventarioId = Number(req.params.inventarioId);
+  const filas = parsearStock(req.file.buffer.toString('utf8'));
+  if (!filas.length) return res.status(400).json({ error: 'archivo_vacio_o_invalido' });
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    await cliente.query('DELETE FROM stock_referencia WHERE inventario_id = $1', [inventarioId]);
+    for (const f of filas) {
+      await cliente.query(
+        `INSERT INTO stock_referencia (inventario_id, codigo, talla, cantidad) VALUES ($1, $2, $3, $4)`,
+        [inventarioId, f.codigo, f.talla, f.cantidad]
+      );
+    }
+    await cliente.query(
+      `UPDATE inventarios SET stock_cargado_en = now(), stock_cargado_por_admin_id = $1 WHERE id = $2`,
+      [adminId, inventarioId]
+    );
+    await cliente.query('COMMIT');
+  } catch (error) {
+    await cliente.query('ROLLBACK');
+    throw error;
+  } finally {
+    cliente.release();
+  }
+
+  res.json({ filasCargadas: filas.length });
+}));
+
+// Cruce propiamente tal: lo capturado (agrupado por código+talla, de todos
+// los tax del inventario) contra la referencia cargada, por FULL OUTER
+// JOIN para no perder artículos que solo están de un lado (se capturó algo
+// que el stock no tiene, o el stock tiene algo que nadie capturó).
+router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
+  const adminId = Number(req.query.adminId);
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
+
+  const inventarioId = Number(req.params.inventarioId);
+
+  const cargaInfo = (
+    await pool.query('SELECT stock_cargado_en FROM inventarios WHERE id = $1', [inventarioId])
+  ).rows[0];
+
+  const { rows } = await pool.query(
+    `SELECT COALESCE(cap.codigo, st.codigo) AS codigo,
+            COALESCE(cap.talla, st.talla) AS talla,
+            COALESCE(cap.cantidad, 0)::int AS cantidad_capturada,
+            COALESCE(st.cantidad, 0)::int AS cantidad_stock,
+            rev.revisado_en
+     FROM (
+       SELECT c.codigo, c.talla, SUM(c.cantidad)::int AS cantidad
+       FROM capturas c JOIN taxes t ON t.id = c.tax_id
+       WHERE t.inventario_id = $1
+       GROUP BY c.codigo, c.talla
+     ) cap
+     FULL OUTER JOIN (
+       SELECT codigo, talla, cantidad FROM stock_referencia WHERE inventario_id = $1
+     ) st ON st.codigo = cap.codigo AND st.talla = cap.talla
+     LEFT JOIN stock_revisiones rev
+       ON rev.inventario_id = $1
+      AND rev.codigo = COALESCE(cap.codigo, st.codigo)
+      AND rev.talla = COALESCE(cap.talla, st.talla)
+     ORDER BY COALESCE(cap.codigo, st.codigo), COALESCE(cap.talla, st.talla)`,
+    [inventarioId]
+  );
+
+  const codigos = [...new Set(rows.map((r) => r.codigo))];
+  const [productos, reglas] = await Promise.all([
+    codigos.length
+      ? pool.query('SELECT codigo, talla, descripcion FROM productos_maestro WHERE codigo = ANY($1)', [codigos])
+      : Promise.resolve({ rows: [] }),
+    codigos.length
+      ? pool.query('SELECT prefijo, talla_cruda, talla_real FROM reglas_talla WHERE prefijo = ANY($1)', [codigos])
+      : Promise.resolve({ rows: [] }),
+  ]);
+  const mapaDescripcion = new Map(productos.rows.map((p) => [`${p.codigo}-${p.talla}`, p.descripcion]));
+  const mapaTallaReal = new Map(reglas.rows.map((r) => [`${r.prefijo}-${r.talla_cruda}`, r.talla_real]));
+
+  // Para las filas con diferencia, trazar en qué tax (y quién lo capturó)
+  // para poder ir directo a corregirlo desde el reporte.
+  const conDiferencia = rows.filter((r) => r.cantidad_capturada !== r.cantidad_stock);
+  const detallePorClave = new Map();
+  if (conDiferencia.length) {
+    const { rows: detalle } = await pool.query(
+      `SELECT c.codigo, c.talla, t.id AS tax_id, t.numero_tax, t.nombre AS tax_nombre,
+              p.alias, p.nombre AS participante_nombre,
+              SUM(c.cantidad)::int AS cantidad
+       FROM capturas c
+       JOIN taxes t ON t.id = c.tax_id
+       JOIN participantes p ON p.id = t.participante_id
+       WHERE t.inventario_id = $1
+       GROUP BY c.codigo, c.talla, t.id, p.id
+       ORDER BY t.numero_tax`,
+      [inventarioId]
+    );
+    for (const d of detalle) {
+      const clave = `${d.codigo}-${d.talla}`;
+      const lista = detallePorClave.get(clave) ?? [];
+      lista.push({
+        taxId: d.tax_id,
+        numeroTax: d.numero_tax,
+        taxNombre: d.tax_nombre,
+        alias: d.alias,
+        nombre: d.participante_nombre,
+        cantidad: d.cantidad,
+      });
+      detallePorClave.set(clave, lista);
+    }
+  }
+
+  const resultado = rows.map((r) => {
+    const clave = `${r.codigo}-${r.talla}`;
+    return {
+      codigo: r.codigo,
+      talla: r.talla,
+      tallaReal: mapaTallaReal.get(clave) ?? null,
+      descripcion: mapaDescripcion.get(clave) ?? null,
+      fotoUrl: urlFotoMinuscula(r.codigo),
+      cantidadCapturada: r.cantidad_capturada,
+      cantidadStock: r.cantidad_stock,
+      diferencia: r.cantidad_capturada - r.cantidad_stock,
+      revisadoEn: r.revisado_en,
+      tax: detallePorClave.get(clave) ?? [],
+    };
+  });
+
+  res.json({ stockCargadoEn: cargaInfo?.stock_cargado_en ?? null, items: resultado });
+}));
+
+router.post('/:inventarioId/revisar', manejarAsync(async (req, res) => {
+  const adminId = Number(req.body?.adminId);
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
+
+  const inventarioId = Number(req.params.inventarioId);
+  const codigo = String(req.body?.codigo ?? '').trim();
+  const talla = String(req.body?.talla ?? '').trim();
+  if (!/^\d{7}$/.test(codigo) || !/^\d{2}$/.test(talla)) return res.status(400).json({ error: 'datos_invalidos' });
+
+  await pool.query(
+    `INSERT INTO stock_revisiones (inventario_id, codigo, talla, revisado_en, revisado_por_admin_id)
+     VALUES ($1, $2, $3, now(), $4)
+     ON CONFLICT (inventario_id, codigo, talla) DO UPDATE SET revisado_en = now(), revisado_por_admin_id = $4`,
+    [inventarioId, codigo, talla, adminId]
+  );
+  res.status(204).end();
+}));
+
+export default router;
