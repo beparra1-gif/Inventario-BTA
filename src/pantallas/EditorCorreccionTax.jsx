@@ -9,13 +9,19 @@ import { formatearFecha } from '../utilidades/fecha.js';
 // capturador entre a arreglarlo él mismo) o "Rehacer" (borrar todo el tax
 // y empezar de cero). Reabre el tax solo si hace falta, reusa las mismas
 // rutas de capturas.js que ya usa el propio capturador.
+//
+// Cada fila guarda con su propio botón "Guardar" apenas se cambia el
+// número — no hay un paso intermedio de "entrar en modo edición" que se
+// pueda saltar sin querer y perder el cambio (eso pasaba antes: si tipeabas
+// y apretabas el botón de abajo sin primero confirmar la fila, el número
+// nunca se mandaba al servidor y no pasaba nada visible).
 export function EditorCorreccionTax({ contexto, adminId, onCerrar, onCambio }) {
   const mostrarToast = useToast();
   const [preparando, setPreparando] = useState(true);
   const [filas, setFilas] = useState([]);
-  const [editandoId, setEditandoId] = useState(null);
-  const [cantidadEditando, setCantidadEditando] = useState('');
+  const [valores, setValores] = useState({}); // { [filaId]: string }
   const [cantidadNueva, setCantidadNueva] = useState('');
+  const [guardandoId, setGuardandoId] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
@@ -38,36 +44,42 @@ export function EditorCorreccionTax({ contexto, adminId, onCerrar, onCambio }) {
 
   async function cargarFilas() {
     const todas = await api.capturasDeTax(contexto.taxId);
-    setFilas(todas.filter((f) => f.codigo === contexto.codigo && f.talla === contexto.talla));
+    const filtradas = todas.filter((f) => f.codigo === contexto.codigo && f.talla === contexto.talla);
+    setFilas(filtradas);
+    setValores(Object.fromEntries(filtradas.map((f) => [f.id, String(f.cantidad)])));
   }
 
-  async function guardarCantidad(fila) {
-    const cantidad = Number(cantidadEditando);
-    if (!Number.isInteger(cantidad) || cantidad <= 0) return;
-    setGuardando(true);
+  async function guardarFila(fila) {
+    const cantidad = Number(valores[fila.id]);
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+      mostrarToast('La cantidad tiene que ser un número entero mayor a 0', 'error');
+      return;
+    }
+    setGuardandoId(fila.id);
     try {
       await api.editarCaptura(fila.id, cantidad);
-      setEditandoId(null);
+      mostrarToast(`Cantidad actualizada a ${cantidad}`, 'ok');
       await cargarFilas();
       onCambio();
     } catch {
       mostrarToast('No se pudo actualizar la cantidad', 'error');
     } finally {
-      setGuardando(false);
+      setGuardandoId(null);
     }
   }
 
   async function borrarFila(fila) {
     if (!window.confirm('¿Borrar esta captura puntual?')) return;
-    setGuardando(true);
+    setGuardandoId(fila.id);
     try {
       await api.eliminarCaptura(fila.id);
+      mostrarToast('Captura borrada', 'ok');
       await cargarFilas();
       onCambio();
     } catch {
       mostrarToast('No se pudo borrar la captura', 'error');
     } finally {
-      setGuardando(false);
+      setGuardandoId(null);
     }
   }
 
@@ -89,6 +101,7 @@ export function EditorCorreccionTax({ contexto, adminId, onCerrar, onCambio }) {
   }
 
   async function cerrarTaxDeNuevo() {
+    setGuardando(true);
     try {
       await api.cerrarTax(contexto.taxId);
       mostrarToast(`Tax ${contexto.numeroTax} cerrado de nuevo`, 'ok');
@@ -96,14 +109,16 @@ export function EditorCorreccionTax({ contexto, adminId, onCerrar, onCambio }) {
       onCerrar();
     } catch {
       mostrarToast('No se pudo cerrar el tax', 'error');
+    } finally {
+      setGuardando(false);
     }
   }
 
   const totalActual = filas.reduce((acc, f) => acc + f.cantidad, 0);
 
   return (
-    <div className="fondo-hoja" onClick={onCerrar}>
-      <div className="hoja" onClick={(e) => e.stopPropagation()}>
+    <div className="fondo-modal" onClick={onCerrar}>
+      <div className="modal-centrado" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <h3 style={{ margin: 0 }}>Tax {contexto.numeroTax}{contexto.taxNombre ? ` · ${contexto.taxNombre}` : ''}</h3>
           <button className="btn-texto" style={{ padding: 0 }} onClick={onCerrar}>Cerrar</button>
@@ -118,46 +133,42 @@ export function EditorCorreccionTax({ contexto, adminId, onCerrar, onCambio }) {
           <>
             <p style={{ fontSize: 13, margin: '0 0 12px' }}>
               Este tax lleva capturado <strong>{totalActual}</strong> de este código+talla, en {filas.length} línea{filas.length === 1 ? '' : 's'}.
+              Cambia el número de la línea que necesites y tocá "Guardar" en esa misma línea — se aplica al toque.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              {filas.map((f) => (
-                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--borde)', borderRadius: 10, padding: '8px 10px' }}>
-                  <div style={{ flex: 1, fontSize: 12, color: 'var(--texto-tenue)' }}>
-                    {f.origen === 'manual' ? 'Manual' : 'Escaneo'} · {formatearFecha(f.creado_en)}
+              {filas.map((f) => {
+                const valorActual = valores[f.id] ?? '';
+                const cambiado = Number(valorActual) !== f.cantidad;
+                const ocupado = guardandoId === f.id;
+                return (
+                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--borde)', borderRadius: 10, padding: '8px 10px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, fontSize: 12, color: 'var(--texto-tenue)', minWidth: 90 }}>
+                      {f.origen === 'manual' ? 'Manual' : 'Escaneo'} · {formatearFecha(f.creado_en)}
+                    </div>
+                    <input
+                      className="campo"
+                      style={{ marginBottom: 0, width: 70, padding: '6px 8px' }}
+                      type="number"
+                      inputMode="numeric"
+                      value={valorActual}
+                      onChange={(e) => setValores((v) => ({ ...v, [f.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === 'Enter' && guardarFila(f)}
+                    />
+                    <button
+                      className="btn btn-secundario btn-chico"
+                      style={{ padding: '6px 12px' }}
+                      disabled={ocupado || !cambiado}
+                      onClick={() => guardarFila(f)}
+                    >
+                      {ocupado ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button className="btn-texto" style={{ padding: 0, fontSize: 12, color: '#B91C1C' }} disabled={ocupado} onClick={() => borrarFila(f)}>
+                      Borrar
+                    </button>
                   </div>
-                  {editandoId === f.id ? (
-                    <>
-                      <input
-                        className="campo"
-                        style={{ marginBottom: 0, width: 70, padding: '6px 8px' }}
-                        type="number"
-                        inputMode="numeric"
-                        value={cantidadEditando}
-                        onChange={(e) => setCantidadEditando(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && guardarCantidad(f)}
-                        autoFocus
-                      />
-                      <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} disabled={guardando} onClick={() => guardarCantidad(f)}>OK</button>
-                      <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => setEditandoId(null)}>✕</button>
-                    </>
-                  ) : (
-                    <>
-                      <strong>{f.cantidad}</strong>
-                      <button
-                        className="btn-texto"
-                        style={{ padding: 0, fontSize: 12 }}
-                        onClick={() => { setEditandoId(f.id); setCantidadEditando(String(f.cantidad)); }}
-                      >
-                        Editar
-                      </button>
-                      <button className="btn-texto" style={{ padding: 0, fontSize: 12, color: '#B91C1C' }} disabled={guardando} onClick={() => borrarFila(f)}>
-                        Borrar
-                      </button>
-                    </>
-                  )}
-                </div>
-              ))}
+                );
+              })}
               {filas.length === 0 && (
                 <p style={{ fontSize: 13, color: 'var(--texto-tenue)', textAlign: 'center' }}>
                   Este tax no tiene capturas de este código+talla (la cantidad que veías venía de otro tax).
@@ -182,8 +193,8 @@ export function EditorCorreccionTax({ contexto, adminId, onCerrar, onCambio }) {
               </button>
             </div>
 
-            <button className="btn btn-primario" onClick={cerrarTaxDeNuevo}>
-              Guardar y volver a cerrar este tax
+            <button className="btn btn-primario" disabled={guardando} onClick={cerrarTaxDeNuevo}>
+              Cerrar este tax de nuevo
             </button>
           </>
         )}

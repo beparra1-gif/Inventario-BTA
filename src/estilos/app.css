@@ -361,6 +361,38 @@ label.etiqueta {
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* Modal centrado (no pegado abajo como .fondo-hoja/.hoja, que es a
+   propósito para el flujo de captura en celular) — para ventanas
+   emergentes de gestión/admin, donde pegarlo abajo queda cortado contra la
+   barra de tareas en pantallas de escritorio bajas. */
+.fondo-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px 16px;
+}
+
+.modal-centrado {
+  width: 100%;
+  max-width: 520px;
+  max-height: 85dvh;
+  background: var(--fondo-tarjeta);
+  border-radius: var(--radio);
+  padding: 20px;
+  overflow-y: auto;
+  animation: aparecer 0.15s ease;
+}
+
+@keyframes aparecer {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
 /* Se pega arriba de la hoja (que es la que hace scroll) y "sangra" hacia
    afuera del padding del contenedor para quedar pegado al borde real, no
    flotando a 20px de él. En el celular, cuando aparece el teclado y el
