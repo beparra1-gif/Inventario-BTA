@@ -5,6 +5,78 @@ import { formatearFecha } from '../utilidades/fecha.js';
 import { fueraDeTolerancia, agruparPorCodigo, participantesDe, calcularEstadisticas } from '../utilidades/diferenciasStock.js';
 import { EditorCorreccionTax } from './EditorCorreccionTax.jsx';
 
+// Tabla talla por talla de un producto — se usa tanto pegada bajo la fila
+// en vista lista como adentro del modal en vista cuadrícula, así el
+// contenido no se duplica entre las dos formas de ver el detalle.
+function TablaTallasGrupo({ grupo, tolerancia, onCorregir, onMarcarRevisado }) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="tabla-resumen">
+        <thead>
+          <tr><th>Talla</th><th>Capturado</th><th>Stock</th><th>Diferencia</th><th>Quién lo capturó</th><th></th></tr>
+        </thead>
+        <tbody>
+          {grupo.tallas.map((t) => {
+            const enDiferencia = fueraDeTolerancia(t, tolerancia);
+            return (
+              <tr key={`${t.codigo}-${t.talla}`}>
+                <td>{t.tallaReal || t.talla}</td>
+                <td>{t.cantidadCapturada}</td>
+                <td>{t.cantidadStock}</td>
+                <td style={{ fontWeight: 700, color: enDiferencia ? '#B91C1C' : 'var(--exito)' }}>
+                  {t.diferencia > 0 ? `+${t.diferencia}` : t.diferencia}
+                </td>
+                <td style={{ fontSize: 12 }}>
+                  {t.tax.length === 0
+                    ? '—'
+                    : t.tax.map((tx) => (
+                        <div key={tx.taxId} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>
+                            Tax {tx.numeroTax}{tx.taxNombre ? ` · ${tx.taxNombre}` : ''} — {tx.nombre || tx.alias} ({tx.cantidad})
+                          </span>
+                          <button
+                            className="btn-texto"
+                            style={{ padding: 0, fontSize: 11 }}
+                            onClick={() => onCorregir({
+                              taxId: tx.taxId,
+                              numeroTax: tx.numeroTax,
+                              taxNombre: tx.taxNombre,
+                              estado: tx.taxEstado,
+                              participanteId: tx.participanteId,
+                              alias: tx.alias,
+                              nombre: tx.nombre,
+                              codigo: t.codigo,
+                              talla: t.talla,
+                              tallaReal: t.tallaReal,
+                            })}
+                          >
+                            Corregir
+                          </button>
+                        </div>
+                      ))}
+                </td>
+                <td>
+                  {!enDiferencia ? (
+                    '—'
+                  ) : t.revisadoEn ? (
+                    <span style={{ color: 'var(--exito)', fontSize: 12, fontWeight: 700 }} title={t.nota || ''}>
+                      ✓ revisado{t.nota ? ` — ${t.nota}` : ''}
+                    </span>
+                  ) : (
+                    <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => onMarcarRevisado(t)}>
+                      Marcar revisado
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Pantalla propia del reporte de diferencias: resumen de verificación
 // primero (stock teórico, capturado, diferencias, pendientes), el detalle
 // por artículo siempre visible debajo (no escondido detrás de un clic), y
@@ -19,6 +91,8 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
   const [filtroParticipante, setFiltroParticipante] = useState(null); // { id, alias, nombre } | null
   const [soloDiferencias, setSoloDiferencias] = useState(true);
   const [expandidos, setExpandidos] = useState(new Set());
+  const [vistaDetalle, setVistaDetalle] = useState('lista'); // 'lista' | 'cuadricula'
+  const [grupoModalCodigo, setGrupoModalCodigo] = useState(null);
   const [editorContexto, setEditorContexto] = useState(null);
   const inputRef = useRef(null);
   const detalleRef = useRef(null);
@@ -258,10 +332,34 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
       <div className="tarjeta" ref={detalleRef}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
           <h3 style={{ margin: 0 }}>Detalle de diferencias por artículo</h3>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-            <input type="checkbox" checked={soloDiferencias} onChange={(e) => setSoloDiferencias(e.target.checked)} />
-            Mostrar solo con diferencia
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <input type="checkbox" checked={soloDiferencias} onChange={(e) => setSoloDiferencias(e.target.checked)} />
+              Mostrar solo con diferencia
+            </label>
+            <div style={{ display: 'flex', border: '1px solid var(--borde)', borderRadius: 8, overflow: 'hidden' }}>
+              <button
+                onClick={() => setVistaDetalle('lista')}
+                style={{
+                  padding: '5px 10px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+                  background: vistaDetalle === 'lista' ? 'var(--primario)' : 'var(--fondo-sutil)',
+                  color: vistaDetalle === 'lista' ? '#fff' : 'var(--texto)',
+                }}
+              >
+                ☰ Lista
+              </button>
+              <button
+                onClick={() => setVistaDetalle('cuadricula')}
+                style={{
+                  padding: '5px 10px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+                  background: vistaDetalle === 'cuadricula' ? 'var(--primario)' : 'var(--fondo-sutil)',
+                  color: vistaDetalle === 'cuadricula' ? '#fff' : 'var(--texto)',
+                }}
+              >
+                ▦ Cuadrícula
+              </button>
+            </div>
+          </div>
         </div>
         {filtroParticipante && (
           <div className="chip" style={{ margin: '8px 0', cursor: 'pointer' }} onClick={() => setFiltroParticipante(null)}>
@@ -269,127 +367,125 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-          {gruposFiltrados.map((grupo) => {
-            const expandido = expandidos.has(grupo.codigo);
-            const participantes = participantesDe(grupo);
-            const tallasConDiferencia = grupo.tallas.filter((t) => fueraDeTolerancia(t, tolerancia));
-            const pendientesGrupo = tallasConDiferencia.filter((t) => !t.revisadoEn).length;
-            return (
-              <div key={grupo.codigo} style={{ border: '1px solid var(--borde)', borderRadius: 10, overflow: 'hidden' }}>
-                <button
-                  onClick={() => alternarExpandido(grupo.codigo)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: 10,
-                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit',
-                  }}
-                >
+        {vistaDetalle === 'lista' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {gruposFiltrados.map((grupo) => {
+              const expandido = expandidos.has(grupo.codigo);
+              const participantes = participantesDe(grupo);
+              const tallasConDiferencia = grupo.tallas.filter((t) => fueraDeTolerancia(t, tolerancia));
+              const pendientesGrupo = tallasConDiferencia.filter((t) => !t.revisadoEn).length;
+              return (
+                <div key={grupo.codigo} style={{ border: '1px solid var(--borde)', borderRadius: 10, overflow: 'hidden' }}>
+                  <button
+                    onClick={() => alternarExpandido(grupo.codigo)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: 10,
+                      background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit',
+                    }}
+                  >
+                    <img
+                      src={grupo.fotoUrl}
+                      alt=""
+                      style={{
+                        width: 48, height: 48, objectFit: 'contain', borderRadius: 8, flexShrink: 0,
+                        background: 'var(--fondo-sutil)', border: '1px solid var(--borde)',
+                      }}
+                      onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{grupo.codigo} <span style={{ fontWeight: 400, color: 'var(--texto-tenue)' }}>{grupo.descripcion || ''}</span></div>
+                      <div style={{ fontSize: 12, color: 'var(--texto-tenue)' }}>
+                        Capturado {grupo.cantidadCapturada} · Stock {grupo.cantidadStock}
+                        {participantes.length > 0 && ` · capturado por ${participantes.join(', ')}`}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontWeight: 700, color: tallasConDiferencia.length === 0 ? 'var(--exito)' : '#B91C1C' }}>
+                        {grupo.diferencia > 0 ? `+${grupo.diferencia}` : grupo.diferencia}
+                      </div>
+                      {pendientesGrupo > 0 ? (
+                        <div style={{ fontSize: 11, color: '#B91C1C' }}>{pendientesGrupo} sin validar</div>
+                      ) : tallasConDiferencia.length > 0 ? (
+                        <div style={{ fontSize: 11, color: 'var(--exito)' }}>✓ validado</div>
+                      ) : null}
+                    </div>
+                    <span style={{ flexShrink: 0 }}>{expandido ? '▲' : '▼'}</span>
+                  </button>
+
+                  {expandido && (
+                    <div style={{ borderTop: '1px solid var(--borde)', padding: '8px 10px 10px' }}>
+                      <TablaTallasGrupo
+                        grupo={grupo}
+                        tolerancia={tolerancia}
+                        onCorregir={setEditorContexto}
+                        onMarcarRevisado={marcarRevisado}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {gruposFiltrados.length === 0 && (
+              <p style={{ textAlign: 'center', color: 'var(--texto-tenue)', fontSize: 13 }}>Sin resultados.</p>
+            )}
+          </div>
+        ) : (
+          <div className="grilla-articulos">
+            {gruposFiltrados.map((grupo) => {
+              const tallasConDiferencia = grupo.tallas.filter((t) => fueraDeTolerancia(t, tolerancia));
+              const pendientesGrupo = tallasConDiferencia.filter((t) => !t.revisadoEn).length;
+              return (
+                <button key={grupo.codigo} className="tarjeta-articulo" onClick={() => setGrupoModalCodigo(grupo.codigo)}>
                   <img
                     src={grupo.fotoUrl}
                     alt=""
-                    style={{
-                      width: 48, height: 48, objectFit: 'contain', borderRadius: 8, flexShrink: 0,
-                      background: 'var(--fondo-sutil)', border: '1px solid var(--borde)',
-                    }}
                     onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
                   />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{grupo.codigo} <span style={{ fontWeight: 400, color: 'var(--texto-tenue)' }}>{grupo.descripcion || ''}</span></div>
-                    <div style={{ fontSize: 12, color: 'var(--texto-tenue)' }}>
-                      Capturado {grupo.cantidadCapturada} · Stock {grupo.cantidadStock}
-                      {participantes.length > 0 && ` · capturado por ${participantes.join(', ')}`}
-                    </div>
+                  <div className="tarjeta-articulo-codigo">{grupo.codigo}</div>
+                  <div className="tarjeta-articulo-descripcion">{grupo.descripcion || '—'}</div>
+                  <div style={{ fontWeight: 700, color: tallasConDiferencia.length === 0 ? 'var(--exito)' : '#B91C1C' }}>
+                    {grupo.diferencia > 0 ? `+${grupo.diferencia}` : grupo.diferencia}
                   </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontWeight: 700, color: tallasConDiferencia.length === 0 ? 'var(--exito)' : '#B91C1C' }}>
-                      {grupo.diferencia > 0 ? `+${grupo.diferencia}` : grupo.diferencia}
-                    </div>
-                    {pendientesGrupo > 0 ? (
-                      <div style={{ fontSize: 11, color: '#B91C1C' }}>{pendientesGrupo} sin validar</div>
-                    ) : tallasConDiferencia.length > 0 ? (
-                      <div style={{ fontSize: 11, color: 'var(--exito)' }}>✓ validado</div>
-                    ) : null}
-                  </div>
-                  <span style={{ flexShrink: 0 }}>{expandido ? '▲' : '▼'}</span>
+                  {pendientesGrupo > 0 ? (
+                    <span className="badge badge-error">{pendientesGrupo} sin validar</span>
+                  ) : tallasConDiferencia.length > 0 ? (
+                    <span className="badge badge-ok">validado</span>
+                  ) : null}
                 </button>
-
-                {expandido && (
-                  <div style={{ borderTop: '1px solid var(--borde)', padding: '8px 10px 10px' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table className="tabla-resumen">
-                        <thead>
-                          <tr><th>Talla</th><th>Capturado</th><th>Stock</th><th>Diferencia</th><th>Quién lo capturó</th><th></th></tr>
-                        </thead>
-                        <tbody>
-                          {grupo.tallas.map((t) => {
-                            const enDiferencia = fueraDeTolerancia(t, tolerancia);
-                            return (
-                              <tr key={`${t.codigo}-${t.talla}`}>
-                                <td>{t.tallaReal || t.talla}</td>
-                                <td>{t.cantidadCapturada}</td>
-                                <td>{t.cantidadStock}</td>
-                                <td style={{ fontWeight: 700, color: enDiferencia ? '#B91C1C' : 'var(--exito)' }}>
-                                  {t.diferencia > 0 ? `+${t.diferencia}` : t.diferencia}
-                                </td>
-                                <td style={{ fontSize: 12 }}>
-                                  {t.tax.length === 0
-                                    ? '—'
-                                    : t.tax.map((tx) => (
-                                        <div key={tx.taxId} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                          <span>
-                                            Tax {tx.numeroTax}{tx.taxNombre ? ` · ${tx.taxNombre}` : ''} — {tx.nombre || tx.alias} ({tx.cantidad})
-                                          </span>
-                                          <button
-                                            className="btn-texto"
-                                            style={{ padding: 0, fontSize: 11 }}
-                                            onClick={() => setEditorContexto({
-                                              taxId: tx.taxId,
-                                              numeroTax: tx.numeroTax,
-                                              taxNombre: tx.taxNombre,
-                                              estado: tx.taxEstado,
-                                              participanteId: tx.participanteId,
-                                              alias: tx.alias,
-                                              nombre: tx.nombre,
-                                              codigo: t.codigo,
-                                              talla: t.talla,
-                                              tallaReal: t.tallaReal,
-                                            })}
-                                          >
-                                            Corregir
-                                          </button>
-                                        </div>
-                                      ))}
-                                </td>
-                                <td>
-                                  {!enDiferencia ? (
-                                    '—'
-                                  ) : t.revisadoEn ? (
-                                    <span style={{ color: 'var(--exito)', fontSize: 12, fontWeight: 700 }} title={t.nota || ''}>
-                                      ✓ revisado{t.nota ? ` — ${t.nota}` : ''}
-                                    </span>
-                                  ) : (
-                                    <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => marcarRevisado(t)}>
-                                      Marcar revisado
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {gruposFiltrados.length === 0 && (
-            <p style={{ textAlign: 'center', color: 'var(--texto-tenue)', fontSize: 13 }}>Sin resultados.</p>
-          )}
-        </div>
+              );
+            })}
+            {gruposFiltrados.length === 0 && (
+              <p style={{ textAlign: 'center', color: 'var(--texto-tenue)', fontSize: 13, gridColumn: '1 / -1' }}>Sin resultados.</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
+
+    {grupoModalCodigo && (() => {
+      const grupo = grupos.find((g) => g.codigo === grupoModalCodigo);
+      if (!grupo) return null;
+      return (
+        <div className="fondo-modal" onClick={() => setGrupoModalCodigo(null)}>
+          <div className="modal-centrado" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <h3 style={{ margin: 0 }}>{grupo.codigo}</h3>
+              <button className="btn-texto" style={{ padding: 0 }} onClick={() => setGrupoModalCodigo(null)}>Cerrar</button>
+            </div>
+            <p style={{ fontSize: 13, margin: '0 0 16px', color: 'var(--texto-tenue)' }}>
+              {grupo.descripcion} · capturado {grupo.cantidadCapturada} · stock {grupo.cantidadStock}
+            </p>
+            <TablaTallasGrupo
+              grupo={grupo}
+              tolerancia={tolerancia}
+              onCorregir={(ctx) => { setGrupoModalCodigo(null); setEditorContexto(ctx); }}
+              onMarcarRevisado={marcarRevisado}
+            />
+          </div>
+        </div>
+      );
+    })()}
+
     {editorContexto && (
       <EditorCorreccionTax
         contexto={editorContexto}

@@ -416,6 +416,51 @@ label.etiqueta {
   color: var(--texto-tenue);
 }
 
+/* ---------- Reporte de diferencias: vista cuadrícula ---------- */
+
+.grilla-articulos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.tarjeta-articulo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px;
+  background: var(--fondo-tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+.tarjeta-articulo:hover { border-color: var(--primario); }
+
+.tarjeta-articulo img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--fondo-sutil);
+}
+
+.tarjeta-articulo-codigo { font-weight: 700; font-size: 13px; }
+
+.tarjeta-articulo-descripcion {
+  font-size: 11px;
+  color: var(--texto-tenue);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
 /* ---------- Toasts ---------- */
 
 .toasts {
