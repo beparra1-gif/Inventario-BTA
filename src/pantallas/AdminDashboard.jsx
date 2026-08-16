@@ -613,9 +613,14 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
               <div className="hero-crear">
                 <h1>Hola, {admin.nombre || admin.email}</h1>
                 <p>¿Qué inventario vamos a levantar hoy?</p>
-                <button className="btn btn-primario" style={{ height: 64, fontSize: 17 }} onClick={() => setVista('crear')}>
-                  + Crear inventario
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <button className="btn btn-primario" style={{ height: 64, fontSize: 17 }} onClick={() => setVista('crear')}>
+                    + Crear inventario
+                  </button>
+                  <button className="btn btn-secundario" style={{ height: 56, fontSize: 15 }} onClick={() => setVista('revisar')}>
+                    Revisar inventarios realizados
+                  </button>
+                </div>
               </div>
             )}
 
