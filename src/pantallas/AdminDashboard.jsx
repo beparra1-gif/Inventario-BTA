@@ -351,7 +351,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
       mostrarToast('Inventario cerrado — nadie puede seguir capturando hasta que lo reabras', 'ok');
     } catch (error) {
       if (error.info?.error === 'diferencias_sin_validar') {
-        mostrarToast(`Hay ${error.info.pendientes} diferencia${error.info.pendientes === 1 ? '' : 's'} sin validar en el cruce de stock — revísalas antes de cerrar`, 'error');
+        mostrarToast(`Hay ${error.info.pendientes} diferencia${error.info.pendientes === 1 ? '' : 's'} sin validar en el reporte de diferencias — revísalas antes de cerrar`, 'error');
         setCruceVistaInicial('resumen');
         setVista('cruce');
         return;
@@ -995,38 +995,6 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                   <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={iniciarCapturaAdmin}>
                     + Agregar artículos
                   </button>
-                  <button
-                    className="btn btn-secundario btn-chico"
-                    style={{ width: '100%', marginBottom: 8 }}
-                    onClick={() => { setCruceVistaInicial('resumen'); setVista('cruce'); }}
-                  >
-                    Cruce de stock
-                  </button>
-                  <button
-                    className="btn btn-secundario btn-chico"
-                    style={{ width: '100%', marginBottom: 8 }}
-                    onClick={() => { setCruceVistaInicial('cargar'); setVista('cruce'); }}
-                  >
-                    Cargar stock teórico de tienda
-                  </button>
-                  {inventario.estado === 'abierto' ? (
-                    <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={cerrarInventario}>Cerrar inventario</button>
-                  ) : (
-                    <>
-                      <a className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8, textDecoration: 'none' }} href={api.urlExportarInventario(inventario.id)}>
-                        <IconoDescargar tamano={16} /> Exportar inventario
-                      </a>
-                      <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={reabrirInventario}>Reabrir para corregir algo</button>
-                      {!inventario.verificado_en && (
-                        <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={verificarInventario}>
-                          Marcar como verificado
-                        </button>
-                      )}
-                    </>
-                  )}
-                  <button className="btn btn-secundario btn-chico" style={{ width: '100%', color: '#B91C1C' }} onClick={() => borrarInventario(inventario)}>
-                    Borrar inventario
-                  </button>
 
                   {clavesGeneradas.length > 0 && (
                     <div style={{ marginTop: 16, background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12 }}>
@@ -1093,6 +1061,31 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                       </div>
                     )}
                   </div>
+                </div>
+
+                <div className="subhead-inventario">
+                  <button onClick={() => { setCruceVistaInicial('resumen'); setVista('cruce'); }}>
+                    Reporte de diferencias
+                  </button>
+                  <button onClick={() => { setCruceVistaInicial('cargar'); setVista('cruce'); }}>
+                    Actualizar stock teórico
+                  </button>
+                  {inventario.estado === 'abierto' ? (
+                    <button onClick={cerrarInventario}>Cerrar inventario</button>
+                  ) : (
+                    <>
+                      <a href={api.urlExportarInventario(inventario.id)}>
+                        <IconoDescargar tamano={16} /> Exportar inventario
+                      </a>
+                      <button onClick={reabrirInventario}>Reabrir para corregir algo</button>
+                      {!inventario.verificado_en && (
+                        <button onClick={verificarInventario}>Marcar como verificado</button>
+                      )}
+                    </>
+                  )}
+                  <button className="subhead-peligro" onClick={() => borrarInventario(inventario)}>
+                    Borrar inventario
+                  </button>
                 </div>
 
                 <div className="tarjeta">

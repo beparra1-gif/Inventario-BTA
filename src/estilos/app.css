@@ -418,6 +418,47 @@ label.etiqueta {
 .tabla-resumen th, .tabla-resumen td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borde); }
 .tabla-resumen th { color: var(--texto-tenue); font-weight: 600; text-transform: uppercase; font-size: 11px; }
 
+/* ---------- Sub-header rojo (acciones de gestión de un inventario) ---------- */
+
+.subhead-inventario {
+  width: 100%;
+  background: var(--primario);
+  border-radius: var(--radio);
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.subhead-inventario button,
+.subhead-inventario a {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: var(--radio-chico);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  font-family: inherit;
+}
+.subhead-inventario button:hover,
+.subhead-inventario a:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+.subhead-inventario button.subhead-peligro {
+  background: rgba(0, 0, 0, 0.18);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.subhead-inventario button.subhead-peligro:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
 /* ---------- Header admin (nav con menús desplegables) ---------- */
 
 .encabezado-admin {
