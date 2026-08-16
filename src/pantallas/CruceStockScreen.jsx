@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { useToast } from '../contexto/ToastContext.jsx';
 import { formatearFecha } from '../utilidades/fecha.js';
 import { fueraDeTolerancia, agruparPorCodigo, participantesDe, calcularEstadisticas } from '../utilidades/diferenciasStock.js';
+import { EditorCorreccionTax } from './EditorCorreccionTax.jsx';
 
 // Pantalla propia del reporte de diferencias: resumen de verificación
 // primero (stock teórico, capturado, diferencias, pendientes), el detalle
@@ -18,6 +19,7 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
   const [filtroParticipante, setFiltroParticipante] = useState(null); // { id, alias, nombre } | null
   const [soloDiferencias, setSoloDiferencias] = useState(true);
   const [expandidos, setExpandidos] = useState(new Set());
+  const [editorContexto, setEditorContexto] = useState(null);
   const inputRef = useRef(null);
   const detalleRef = useRef(null);
 
@@ -26,19 +28,34 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventario.id]);
 
+  async function obtenerDatos() {
+    const [r, d] = await Promise.all([
+      api.resumenInventario(inventario.id),
+      api.diferenciasStock(inventario.id, adminId),
+    ]);
+    setResumen(r);
+    setDiferencias(d);
+  }
+
   async function cargarTodo() {
     setCargando(true);
     try {
-      const [r, d] = await Promise.all([
-        api.resumenInventario(inventario.id),
-        api.diferenciasStock(inventario.id, adminId),
-      ]);
-      setResumen(r);
-      setDiferencias(d);
+      await obtenerDatos();
     } catch {
       mostrarToast('No se pudo cargar el reporte de diferencias', 'error');
     } finally {
       setCargando(false);
+    }
+  }
+
+  // Igual que cargarTodo pero sin mostrar el spinner de pantalla completa —
+  // se usa mientras el editor de corrección queda abierto encima, para no
+  // hacerlo desaparecer con cada cambio.
+  async function refrescarEnSilencio() {
+    try {
+      await obtenerDatos();
+    } catch {
+      /* el editor sigue con los datos que ya tenía, no es crítico */
     }
   }
 
@@ -158,6 +175,7 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
   }
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="tarjeta">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
@@ -317,8 +335,28 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
                                   {t.tax.length === 0
                                     ? '—'
                                     : t.tax.map((tx) => (
-                                        <div key={tx.taxId}>
-                                          Tax {tx.numeroTax}{tx.taxNombre ? ` · ${tx.taxNombre}` : ''} — {tx.nombre || tx.alias} ({tx.cantidad})
+                                        <div key={tx.taxId} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <span>
+                                            Tax {tx.numeroTax}{tx.taxNombre ? ` · ${tx.taxNombre}` : ''} — {tx.nombre || tx.alias} ({tx.cantidad})
+                                          </span>
+                                          <button
+                                            className="btn-texto"
+                                            style={{ padding: 0, fontSize: 11 }}
+                                            onClick={() => setEditorContexto({
+                                              taxId: tx.taxId,
+                                              numeroTax: tx.numeroTax,
+                                              taxNombre: tx.taxNombre,
+                                              estado: tx.taxEstado,
+                                              participanteId: tx.participanteId,
+                                              alias: tx.alias,
+                                              nombre: tx.nombre,
+                                              codigo: t.codigo,
+                                              talla: t.talla,
+                                              tallaReal: t.tallaReal,
+                                            })}
+                                          >
+                                            Corregir
+                                          </button>
                                         </div>
                                       ))}
                                 </td>
@@ -352,5 +390,14 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
         </div>
       </div>
     </div>
+    {editorContexto && (
+      <EditorCorreccionTax
+        contexto={editorContexto}
+        adminId={adminId}
+        onCerrar={() => setEditorContexto(null)}
+        onCambio={refrescarEnSilencio}
+      />
+    )}
+    </>
   );
 }

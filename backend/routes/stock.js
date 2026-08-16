@@ -163,7 +163,7 @@ router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
   const detallePorClave = new Map();
   if (conDiferencia.length) {
     const { rows: detalle } = await pool.query(
-      `SELECT c.codigo, c.talla, t.id AS tax_id, t.numero_tax, t.nombre AS tax_nombre,
+      `SELECT c.codigo, c.talla, t.id AS tax_id, t.numero_tax, t.nombre AS tax_nombre, t.estado AS tax_estado,
               p.id AS participante_id, p.alias, p.nombre AS participante_nombre,
               SUM(c.cantidad)::int AS cantidad
        FROM capturas c
@@ -181,6 +181,7 @@ router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
         taxId: d.tax_id,
         numeroTax: d.numero_tax,
         taxNombre: d.tax_nombre,
+        taxEstado: d.tax_estado,
         participanteId: d.participante_id,
         alias: d.alias,
         nombre: d.participante_nombre,
