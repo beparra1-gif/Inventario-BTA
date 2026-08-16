@@ -2,6 +2,7 @@ import { Router } from 'express';
 import pool from '../db.js';
 import { agruparCapturas, generarLineasExportacion, nombreArchivoExportacion } from '../utils/ean13.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
+import { contarDiferenciasPendientes } from './stock.js';
 
 const router = Router();
 
@@ -175,8 +176,20 @@ router.get('/:id/participantes', manejarAsync(async (req, res) => {
   res.json(resultado.rows);
 }));
 
+// Si se cargó un stock teórico para este inventario, no se puede cerrar
+// mientras queden diferencias sin marcar "revisado" en el cruce de stock
+// (ver routes/stock.js) — así el cierre queda respaldado por una
+// validación real, no solo por haber terminado de capturar. Si nunca se
+// cargó un stock teórico, cierra igual que siempre (esto es opcional, no
+// bloquea a quien no use el cruce).
 router.post('/:id/cerrar', manejarAsync(async (req, res) => {
+  const adminId = Number(req.body?.adminId);
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
+
   const id = Number(req.params.id);
+  const pendientes = await contarDiferenciasPendientes(id);
+  if (pendientes > 0) return res.status(409).json({ error: 'diferencias_sin_validar', pendientes });
+
   const resultado = await pool.query(
     `UPDATE inventarios SET estado = 'cerrado', cerrado_en = now() WHERE id = $1 AND estado = 'abierto' RETURNING *`,
     [id]

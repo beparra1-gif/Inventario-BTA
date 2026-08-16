@@ -8,11 +8,12 @@ import { formatearFecha } from '../utilidades/fecha.js';
 import { PantallaTaxes } from './PantallaTaxes.jsx';
 import { PantallaCaptura } from './PantallaCaptura.jsx';
 import { AuditoriaPanel } from './AuditoriaPanel.jsx';
+import { CruceStockScreen } from './CruceStockScreen.jsx';
 
 export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const mostrarToast = useToast();
 
-  // 'menu' | 'crear' | 'revisar' | 'gestionar' | 'admins' | 'perfil'
+  // 'menu' | 'crear' | 'revisar' | 'gestionar' | 'admins' | 'perfil' | 'auditoria' | 'cruce'
   const [vista, setVista] = useState('menu');
 
   // --- Crear inventario (wizard) ---
@@ -41,12 +42,8 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const [validandoTaxId, setValidandoTaxId] = useState(null);
   const [cantidadValidacion, setCantidadValidacion] = useState('');
 
-  // --- Cruce contra archivo de cierre de stock ---
-  const [mostrarCruceStock, setMostrarCruceStock] = useState(false);
-  const [cargandoStock, setCargandoStock] = useState(false);
-  const [diferenciasStock, setDiferenciasStock] = useState(null);
-  const [soloDiferenciasStock, setSoloDiferenciasStock] = useState(true);
-  const inputStockRef = useRef(null);
+  // --- Cruce de stock (pantalla propia, ver CruceStockScreen) ---
+  const [cruceVistaInicial, setCruceVistaInicial] = useState('resumen');
 
   // --- Modo captura del admin (agregar artículos con su propio tax) ---
   const [adminParticipante, setAdminParticipante] = useState(null);
@@ -164,8 +161,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   useEffect(() => {
     setAdminParticipante(null);
     setAdminTax(null);
-    setMostrarCruceStock(false);
-    setDiferenciasStock(null);
+    setCruceVistaInicial('resumen');
   }, [inventario?.id]);
 
   useEffect(() => {
@@ -346,9 +342,15 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
 
   async function cerrarInventario() {
     try {
-      setInventario(await api.cerrarInventario(inventario.id));
+      setInventario(await api.cerrarInventario(inventario.id, admin.id));
       mostrarToast('Inventario cerrado — nadie puede seguir capturando hasta que lo reabras', 'ok');
-    } catch {
+    } catch (error) {
+      if (error.info?.error === 'diferencias_sin_validar') {
+        mostrarToast(`Hay ${error.info.pendientes} diferencia${error.info.pendientes === 1 ? '' : 's'} sin validar en el cruce de stock — revísalas antes de cerrar`, 'error');
+        setCruceVistaInicial('resumen');
+        setVista('cruce');
+        return;
+      }
       mostrarToast('No se pudo cerrar el inventario', 'error');
     }
   }
@@ -438,45 +440,6 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     } catch {
       mostrarToast('No se pudo validar el tax', 'error');
     }
-  }
-
-  async function cargarDiferenciasStock() {
-    try {
-      setDiferenciasStock(await api.diferenciasStock(inventario.id, admin.id));
-    } catch {
-      mostrarToast('No se pudieron cargar las diferencias', 'error');
-    }
-  }
-
-  async function subirArchivoStock(evento) {
-    const archivo = evento.target.files?.[0];
-    if (!archivo) return;
-    setCargandoStock(true);
-    try {
-      const r = await api.cargarStock(inventario.id, admin.id, archivo);
-      mostrarToast(`Stock cargado: ${r.filasCargadas} código+talla`, 'ok');
-      await cargarDiferenciasStock();
-    } catch {
-      mostrarToast('No se pudo cargar el archivo de stock', 'error');
-    } finally {
-      setCargandoStock(false);
-      if (inputStockRef.current) inputStockRef.current.value = '';
-    }
-  }
-
-  async function marcarRevisadoStock(item) {
-    try {
-      await api.marcarRevisadoStock(inventario.id, admin.id, item.codigo, item.talla);
-      cargarDiferenciasStock();
-    } catch {
-      mostrarToast('No se pudo marcar como revisado', 'error');
-    }
-  }
-
-  function abrirCruceStock() {
-    const mostrar = !mostrarCruceStock;
-    setMostrarCruceStock(mostrar);
-    if (mostrar && !diferenciasStock) cargarDiferenciasStock();
   }
 
   async function borrarInventario(inv) {
@@ -743,6 +706,15 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
             )}
 
             {vista === 'auditoria' && <AuditoriaPanel adminId={admin.id} onVolver={() => setVista('menu')} />}
+
+            {vista === 'cruce' && inventario && (
+              <CruceStockScreen
+                inventario={inventario}
+                adminId={admin.id}
+                vistaInicial={cruceVistaInicial}
+                onVolver={() => setVista('gestionar')}
+              />
+            )}
 
             {vista === 'admins' && admin.rol === 'superadmin' && (
               <div className="tarjeta">
@@ -1031,19 +1003,30 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                     )}
                   </p>
 
-                  <a className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8, textDecoration: 'none' }} href={api.urlExportarInventario(inventario.id)}>
-                    <IconoDescargar tamano={16} /> Exportar .txt
-                  </a>
                   <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={iniciarCapturaAdmin}>
                     + Agregar artículos
                   </button>
-                  <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={abrirCruceStock}>
-                    {mostrarCruceStock ? 'Ocultar cruce de stock' : 'Cruce de stock'}
+                  <button
+                    className="btn btn-secundario btn-chico"
+                    style={{ width: '100%', marginBottom: 8 }}
+                    onClick={() => { setCruceVistaInicial('resumen'); setVista('cruce'); }}
+                  >
+                    Cruce de stock
+                  </button>
+                  <button
+                    className="btn btn-secundario btn-chico"
+                    style={{ width: '100%', marginBottom: 8 }}
+                    onClick={() => { setCruceVistaInicial('cargar'); setVista('cruce'); }}
+                  >
+                    Cargar stock teórico de tienda
                   </button>
                   {inventario.estado === 'abierto' ? (
                     <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={cerrarInventario}>Cerrar inventario</button>
                   ) : (
                     <>
+                      <a className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8, textDecoration: 'none' }} href={api.urlExportarInventario(inventario.id)}>
+                        <IconoDescargar tamano={16} /> Exportar inventario
+                      </a>
                       <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={reabrirInventario}>Reabrir para corregir algo</button>
                       {!inventario.verificado_en && (
                         <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginBottom: 8 }} onClick={verificarInventario}>
@@ -1122,91 +1105,6 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                     )}
                   </div>
                 </div>
-
-                {mostrarCruceStock && (
-                  <div className="tarjeta">
-                    <h3 style={{ marginTop: 0 }}>Cruce de stock</h3>
-                    <p style={{ fontSize: 12, color: 'var(--texto-tenue)', margin: '-4px 0 10px' }}>
-                      Sube el .txt de cierre (formato código;talla;cantidad, ej. 0015032;05;1) para comparar contra lo capturado.
-                      {diferenciasStock?.stockCargadoEn && ` Última carga: ${formatearFecha(diferenciasStock.stockCargadoEn)}.`}
-                    </p>
-                    <input
-                      ref={inputStockRef}
-                      className="campo"
-                      type="file"
-                      accept=".txt"
-                      disabled={cargandoStock}
-                      onChange={subirArchivoStock}
-                    />
-                    {cargandoStock && <p style={{ fontSize: 13, color: 'var(--texto-tenue)', marginTop: -8 }}>Cargando…</p>}
-
-                    {diferenciasStock && (
-                      <>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, margin: '12px 0' }}>
-                          <input type="checkbox" checked={soloDiferenciasStock} onChange={(e) => setSoloDiferenciasStock(e.target.checked)} />
-                          Mostrar solo diferencias
-                        </label>
-                        <div style={{ overflowX: 'auto' }}>
-                          <table className="tabla-resumen">
-                            <thead>
-                              <tr>
-                                <th></th><th>Código</th><th>Talla</th><th>Descripción</th>
-                                <th>Capturado</th><th>Stock</th><th>Diferencia</th><th>Dónde se capturó</th><th></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {diferenciasStock.items
-                                .filter((item) => !soloDiferenciasStock || item.diferencia !== 0)
-                                .map((item) => (
-                                  <tr key={`${item.codigo}-${item.talla}`}>
-                                    <td>
-                                      <img
-                                        src={item.fotoUrl}
-                                        alt=""
-                                        style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4 }}
-                                        onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
-                                      />
-                                    </td>
-                                    <td>{item.codigo}</td>
-                                    <td>{item.tallaReal || item.talla}</td>
-                                    <td>{item.descripcion || '—'}</td>
-                                    <td>{item.cantidadCapturada}</td>
-                                    <td>{item.cantidadStock}</td>
-                                    <td style={{ fontWeight: 700, color: item.diferencia === 0 ? 'var(--exito)' : '#B91C1C' }}>
-                                      {item.diferencia > 0 ? `+${item.diferencia}` : item.diferencia}
-                                    </td>
-                                    <td style={{ fontSize: 12 }}>
-                                      {item.tax.length === 0
-                                        ? '—'
-                                        : item.tax.map((t) => (
-                                            <div key={t.taxId}>
-                                              Tax {t.numeroTax}{t.taxNombre ? ` · ${t.taxNombre}` : ''} — {t.nombre || t.alias} ({t.cantidad})
-                                            </div>
-                                          ))}
-                                    </td>
-                                    <td>
-                                      {item.diferencia === 0 ? (
-                                        '—'
-                                      ) : item.revisadoEn ? (
-                                        <span style={{ color: 'var(--exito)', fontSize: 12, fontWeight: 700 }}>✓ revisado</span>
-                                      ) : (
-                                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => marcarRevisadoStock(item)}>
-                                          Marcar revisado
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              {diferenciasStock.items.filter((item) => !soloDiferenciasStock || item.diferencia !== 0).length === 0 && (
-                                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--texto-tenue)' }}>Sin diferencias.</td></tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
 
                 <div className="tarjeta">
                   {!resumen ? (

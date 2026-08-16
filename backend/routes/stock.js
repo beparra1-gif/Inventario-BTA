@@ -15,10 +15,10 @@ async function exigirGestor(adminId) {
   return admin && admin.rol !== 'auditor' ? admin : null;
 }
 
-// El archivo trae "codigo;talla;cantidad", una línea por unidad física
-// (mismo formato que el .txt que exporta este sistema) o ya con la
-// cantidad sumada — cualquiera de los dos casos se soporta sumando todo
-// por código+talla acá mismo.
+// El archivo trae "codigo;talla;cantidad" (el stock teórico de la tienda,
+// el mismo formato que usa el .txt que exporta este sistema) — una línea
+// por unidad física o ya con la cantidad sumada, cualquiera de los dos
+// casos se soporta sumando todo por código+talla acá mismo.
 function parsearStock(texto) {
   const porClave = new Map();
   for (const lineaCruda of texto.split(/\r?\n/)) {
@@ -39,6 +39,51 @@ function parsearStock(texto) {
     });
   }
   return [...porClave.values()];
+}
+
+// Base del cruce: lo capturado (agrupado por código+talla, de todos los tax
+// del inventario) contra el stock teórico cargado, por FULL OUTER JOIN para
+// no perder artículos que solo están de un lado. Reusada tanto por el
+// reporte completo (con foto/descr./detalle por tax) como por el conteo
+// rápido de pendientes que usa el gate de "cerrar inventario".
+async function obtenerFilasDiferencia(inventarioId) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(cap.codigo, st.codigo) AS codigo,
+            COALESCE(cap.talla, st.talla) AS talla,
+            COALESCE(cap.cantidad, 0)::int AS cantidad_capturada,
+            COALESCE(st.cantidad, 0)::int AS cantidad_stock,
+            rev.revisado_en
+     FROM (
+       SELECT c.codigo, c.talla, SUM(c.cantidad)::int AS cantidad
+       FROM capturas c JOIN taxes t ON t.id = c.tax_id
+       WHERE t.inventario_id = $1
+       GROUP BY c.codigo, c.talla
+     ) cap
+     FULL OUTER JOIN (
+       SELECT codigo, talla, cantidad FROM stock_referencia WHERE inventario_id = $1
+     ) st ON st.codigo = cap.codigo AND st.talla = cap.talla
+     LEFT JOIN stock_revisiones rev
+       ON rev.inventario_id = $1
+      AND rev.codigo = COALESCE(cap.codigo, st.codigo)
+      AND rev.talla = COALESCE(cap.talla, st.talla)
+     ORDER BY COALESCE(cap.codigo, st.codigo), COALESCE(cap.talla, st.talla)`,
+    [inventarioId]
+  );
+  return rows;
+}
+
+// Cuántas diferencias quedan sin marcar "revisado" — usado por
+// POST /api/inventarios/:id/cerrar para exigir que se hayan validado antes
+// de poder cerrar. Si nunca se cargó un stock teórico para este inventario
+// no se exige nada (la función queda igual que antes de este cruce).
+export async function contarDiferenciasPendientes(inventarioId) {
+  const tieneStock = (
+    await pool.query('SELECT 1 FROM stock_referencia WHERE inventario_id = $1 LIMIT 1', [inventarioId])
+  ).rows.length > 0;
+  if (!tieneStock) return 0;
+
+  const filas = await obtenerFilasDiferencia(inventarioId);
+  return filas.filter((f) => f.cantidad_capturada !== f.cantidad_stock && !f.revisado_en).length;
 }
 
 // Cada carga reemplaza entera la referencia vigente del inventario — un
@@ -78,10 +123,9 @@ router.post('/:inventarioId/cargar', subida.single('archivo'), manejarAsync(asyn
   res.json({ filasCargadas: filas.length });
 }));
 
-// Cruce propiamente tal: lo capturado (agrupado por código+talla, de todos
-// los tax del inventario) contra la referencia cargada, por FULL OUTER
-// JOIN para no perder artículos que solo están de un lado (se capturó algo
-// que el stock no tiene, o el stock tiene algo que nadie capturó).
+// Cruce completo con foto/descripción y, para cada código+talla con
+// diferencia, en qué tax (y quién lo capturó) — para ir directo a
+// corregirlo desde el reporte.
 router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
   const adminId = Number(req.query.adminId);
   if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
@@ -92,28 +136,7 @@ router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
     await pool.query('SELECT stock_cargado_en FROM inventarios WHERE id = $1', [inventarioId])
   ).rows[0];
 
-  const { rows } = await pool.query(
-    `SELECT COALESCE(cap.codigo, st.codigo) AS codigo,
-            COALESCE(cap.talla, st.talla) AS talla,
-            COALESCE(cap.cantidad, 0)::int AS cantidad_capturada,
-            COALESCE(st.cantidad, 0)::int AS cantidad_stock,
-            rev.revisado_en
-     FROM (
-       SELECT c.codigo, c.talla, SUM(c.cantidad)::int AS cantidad
-       FROM capturas c JOIN taxes t ON t.id = c.tax_id
-       WHERE t.inventario_id = $1
-       GROUP BY c.codigo, c.talla
-     ) cap
-     FULL OUTER JOIN (
-       SELECT codigo, talla, cantidad FROM stock_referencia WHERE inventario_id = $1
-     ) st ON st.codigo = cap.codigo AND st.talla = cap.talla
-     LEFT JOIN stock_revisiones rev
-       ON rev.inventario_id = $1
-      AND rev.codigo = COALESCE(cap.codigo, st.codigo)
-      AND rev.talla = COALESCE(cap.talla, st.talla)
-     ORDER BY COALESCE(cap.codigo, st.codigo), COALESCE(cap.talla, st.talla)`,
-    [inventarioId]
-  );
+  const rows = await obtenerFilasDiferencia(inventarioId);
 
   const codigos = [...new Set(rows.map((r) => r.codigo))];
   const [productos, reglas] = await Promise.all([
@@ -127,14 +150,12 @@ router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
   const mapaDescripcion = new Map(productos.rows.map((p) => [`${p.codigo}-${p.talla}`, p.descripcion]));
   const mapaTallaReal = new Map(reglas.rows.map((r) => [`${r.prefijo}-${r.talla_cruda}`, r.talla_real]));
 
-  // Para las filas con diferencia, trazar en qué tax (y quién lo capturó)
-  // para poder ir directo a corregirlo desde el reporte.
   const conDiferencia = rows.filter((r) => r.cantidad_capturada !== r.cantidad_stock);
   const detallePorClave = new Map();
   if (conDiferencia.length) {
     const { rows: detalle } = await pool.query(
       `SELECT c.codigo, c.talla, t.id AS tax_id, t.numero_tax, t.nombre AS tax_nombre,
-              p.alias, p.nombre AS participante_nombre,
+              p.id AS participante_id, p.alias, p.nombre AS participante_nombre,
               SUM(c.cantidad)::int AS cantidad
        FROM capturas c
        JOIN taxes t ON t.id = c.tax_id
@@ -151,6 +172,7 @@ router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
         taxId: d.tax_id,
         numeroTax: d.numero_tax,
         taxNombre: d.tax_nombre,
+        participanteId: d.participante_id,
         alias: d.alias,
         nombre: d.participante_nombre,
         cantidad: d.cantidad,

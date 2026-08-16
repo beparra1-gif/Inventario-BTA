@@ -68,7 +68,7 @@ export const api = {
   inventariosRecientes: (adminId, limite = 2) => solicitar(`/api/inventarios/recientes?adminId=${adminId}&limite=${limite}`),
   inventarioAbiertoPorEdp: (edp) => solicitar(`/api/inventarios/abierto/${edp}`),
   obtenerInventario: (id) => solicitar(`/api/inventarios/${id}`),
-  cerrarInventario: (id) => post(`/api/inventarios/${id}/cerrar`, {}),
+  cerrarInventario: (id, adminId) => post(`/api/inventarios/${id}/cerrar`, { adminId }),
   reabrirInventario: (id, adminId) => post(`/api/inventarios/${id}/reabrir`, { adminId }),
   verificarInventario: (id, adminId) => post(`/api/inventarios/${id}/verificar`, { adminId }),
   eliminarInventario: (id, adminId) => solicitar(`/api/inventarios/${id}?adminId=${adminId}`, { method: 'DELETE' }),
