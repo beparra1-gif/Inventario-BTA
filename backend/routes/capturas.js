@@ -3,6 +3,7 @@ import pool from '../db.js';
 import { agruparCapturas } from '../utils/ean13.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
 import { urlFotoMinuscula } from '../utils/fotos.js';
+import { crearNotificacion } from '../utils/notificaciones.js';
 
 const router = Router();
 
@@ -54,6 +55,11 @@ async function revisarAlertaErrores(io, tax) {
       alias: rows[0].alias,
       nombre: rows[0].nombre,
       totalErrores: total,
+    });
+    crearNotificacion({
+      tipo: 'capturador-errores',
+      mensaje: `${rows[0].nombre || rows[0].alias} lleva ${total} artículos sin reconocer`,
+      inventarioId: tax.inventario_id,
     });
   }
 }

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { api } from '../api.js';
+import { formatearFecha } from '../utilidades/fecha.js';
 
 // Nav superior del panel admin: menús principales con sus apartados. Se
 // arma como datos (no como JSX repetido) para que el mismo contenido sirva
@@ -17,7 +19,10 @@ function armarMenus(admin) {
     {
       id: 'auditoria',
       label: 'Auditoría',
-      items: [{ label: 'Validar tax cerrados', vista: 'auditoria' }],
+      items: [
+        { label: 'Validar tax cerrados', vista: 'auditoria' },
+        { label: 'Histórico de diferencias por tienda', vista: 'historico' },
+      ],
     },
   ];
   if (admin.rol === 'superadmin') {
@@ -38,10 +43,48 @@ function inicial(admin) {
   return fuente.trim().charAt(0).toUpperCase();
 }
 
+// Notificaciones persistentes (inconsistencias de auditoría, solicitudes de
+// modificación, capturadores con muchos errores) — antes solo viajaban por
+// Socket.io en vivo; si nadie tenía el panel abierto en ese momento se
+// perdían. Se consultan acá con un poll simple (no dependen de estar
+// dentro de la room de un inventario puntual).
+function useNotificaciones(adminId) {
+  const [notificaciones, setNotificaciones] = useState([]);
+
+  async function cargar() {
+    try {
+      setNotificaciones(await api.listarNotificaciones(adminId));
+    } catch {
+      /* se reintenta en el próximo poll */
+    }
+  }
+
+  useEffect(() => {
+    cargar();
+    const intervalo = setInterval(cargar, 30000);
+    return () => clearInterval(intervalo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminId]);
+
+  async function marcarLeidas() {
+    try {
+      await api.marcarNotificacionesLeidas(adminId);
+      cargar();
+    } catch {
+      /* no es crítico, se reintenta solo */
+    }
+  }
+
+  return { notificaciones, marcarLeidas };
+}
+
 export function HeaderAdmin({ admin, vista, onNavegar, onSalir }) {
   const [menuAbierto, setMenuAbierto] = useState(null); // id de menú desktop abierto
   const [usuarioAbierto, setUsuarioAbierto] = useState(false);
   const [movilAbierto, setMovilAbierto] = useState(false);
+  const [notifAbierto, setNotifAbierto] = useState(false);
+  const { notificaciones, marcarLeidas } = useNotificaciones(admin.id);
+  const noLeidas = notificaciones.filter((n) => !n.leido_en).length;
 
   const menus = armarMenus(admin);
 
@@ -50,6 +93,7 @@ export function HeaderAdmin({ admin, vista, onNavegar, onSalir }) {
     setMenuAbierto(null);
     setUsuarioAbierto(false);
     setMovilAbierto(false);
+    setNotifAbierto(false);
   }
 
   function menuActivo(menu) {
@@ -93,6 +137,40 @@ export function HeaderAdmin({ admin, vista, onNavegar, onSalir }) {
         </nav>
 
         <div className="nav-admin-espaciador" />
+
+        <div className="nav-admin-item">
+          <button className="nav-admin-campana" onClick={() => setNotifAbierto((v) => !v)} aria-label="Notificaciones">
+            🔔
+            {noLeidas > 0 && <span className="nav-admin-badge">{noLeidas > 9 ? '9+' : noLeidas}</span>}
+          </button>
+          {notifAbierto && (
+            <>
+              <button className="nav-admin-fondo" onClick={() => setNotifAbierto(false)} aria-label="Cerrar notificaciones" />
+              <div className="nav-admin-desplegable nav-admin-desplegable-derecha nav-admin-notificaciones">
+                <div className="nav-admin-notificaciones-header">
+                  <strong>Notificaciones</strong>
+                  {noLeidas > 0 && (
+                    <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={marcarLeidas}>
+                      Marcar todas leídas
+                    </button>
+                  )}
+                </div>
+                {notificaciones.length === 0 ? (
+                  <p style={{ fontSize: 13, color: 'var(--texto-tenue)', padding: '10px 12px', margin: 0 }}>Sin notificaciones.</p>
+                ) : (
+                  notificaciones.slice(0, 20).map((n) => (
+                    <div key={n.id} className={`nav-admin-notificacion${!n.leido_en ? ' no-leida' : ''}`}>
+                      <div style={{ fontSize: 13 }}>{n.mensaje}</div>
+                      <div style={{ fontSize: 11, color: 'var(--texto-tenue)' }}>
+                        {n.numero_inventario ? `${n.numero_inventario} · ` : ''}{formatearFecha(n.creado_en)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
 
         <div className="nav-admin-usuario nav-admin-desktop">
           <button className="nav-admin-usuario-boton" onClick={() => setUsuarioAbierto((v) => !v)}>

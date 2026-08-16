@@ -2,6 +2,10 @@ import { Router } from 'express';
 import pool from '../db.js';
 import { agruparCapturas } from '../utils/ean13.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
+import { crearNotificacion } from '../utils/notificaciones.js';
+import { registrarEvento } from '../utils/bitacora.js';
+import { obtenerFilasDiferencia } from './stock.js';
+import { urlFotoMinuscula } from '../utils/fotos.js';
 
 const router = Router();
 
@@ -117,9 +121,83 @@ router.post('/taxes/:id/validar', manejarAsync(async (req, res) => {
       cantidadCapturada,
       cantidadValidada,
     });
+    crearNotificacion({
+      tipo: 'auditoria-inconsistencia',
+      mensaje: `Tax ${tax.numero_tax} de ${tax.participante_nombre || tax.alias} no calza — capturado ${cantidadCapturada}, validado ${cantidadValidada}`,
+      inventarioId: tax.inventario_id,
+    });
   }
+  registrarEvento({
+    inventarioId: tax.inventario_id,
+    adminId: cuenta.id,
+    tipo: 'validar_tax',
+    detalle: `Tax ${tax.numero_tax}: validado en ${cantidadValidada}, capturado ${cantidadCapturada}${inconsistente ? ' (inconsistente)' : ''}`,
+  });
 
   res.json({ ...actualizado, cantidadCapturada, inconsistente });
+}));
+
+// Cruza TODOS los inventarios de una tienda que hayan tenido un stock
+// teórico cargado (en cualquier estado) y muestra qué código+talla se
+// repite con diferencia entre ellos — para pillar patrones (mismo SKU
+// fallando inventario tras inventario) que revisando uno por uno no se ve.
+router.get('/historico/:edp', manejarAsync(async (req, res) => {
+  if (!(await exigirCuentaValida(req, res))) return;
+
+  const edp = Number(req.params.edp);
+  if (!Number.isInteger(edp)) return res.status(400).json({ error: 'edp_invalido' });
+
+  const inventarios = (
+    await pool.query(
+      `SELECT id, numero_inventario, tolerancia_diferencia, creado_en, estado
+       FROM inventarios WHERE edp = $1 AND stock_cargado_en IS NOT NULL ORDER BY creado_en`,
+      [edp]
+    )
+  ).rows;
+
+  const mapa = new Map();
+  for (const inv of inventarios) {
+    const filas = await obtenerFilasDiferencia(inv.id);
+    for (const f of filas) {
+      const diferencia = f.cantidad_capturada - f.cantidad_stock;
+      if (Math.abs(diferencia) <= (inv.tolerancia_diferencia ?? 0)) continue;
+      const clave = `${f.codigo}-${f.talla}`;
+      const entrada = mapa.get(clave) ?? { codigo: f.codigo, talla: f.talla, apariciones: 0, sumaDiferencia: 0, inventarios: [] };
+      entrada.apariciones += 1;
+      entrada.sumaDiferencia += diferencia;
+      entrada.inventarios.push({
+        inventarioId: inv.id,
+        numeroInventario: inv.numero_inventario,
+        estado: inv.estado,
+        fecha: inv.creado_en,
+        diferencia,
+      });
+      mapa.set(clave, entrada);
+    }
+  }
+
+  const codigos = [...new Set([...mapa.values()].map((e) => e.codigo))];
+  const [productos, reglas] = await Promise.all([
+    codigos.length
+      ? pool.query('SELECT codigo, talla, descripcion FROM productos_maestro WHERE codigo = ANY($1)', [codigos])
+      : Promise.resolve({ rows: [] }),
+    codigos.length
+      ? pool.query('SELECT prefijo, talla_cruda, talla_real FROM reglas_talla WHERE prefijo = ANY($1)', [codigos])
+      : Promise.resolve({ rows: [] }),
+  ]);
+  const mapaDescripcion = new Map(productos.rows.map((p) => [`${p.codigo}-${p.talla}`, p.descripcion]));
+  const mapaTallaReal = new Map(reglas.rows.map((r) => [`${r.prefijo}-${r.talla_cruda}`, r.talla_real]));
+
+  const articulos = [...mapa.values()]
+    .map((e) => ({
+      ...e,
+      tallaReal: mapaTallaReal.get(`${e.codigo}-${e.talla}`) ?? null,
+      descripcion: mapaDescripcion.get(`${e.codigo}-${e.talla}`) ?? null,
+      fotoUrl: urlFotoMinuscula(e.codigo),
+    }))
+    .sort((a, b) => b.apariciones - a.apariciones || Math.abs(b.sumaDiferencia) - Math.abs(a.sumaDiferencia));
+
+  res.json({ inventariosAnalizados: inventarios.length, articulos });
 }));
 
 export default router;

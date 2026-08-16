@@ -3,6 +3,7 @@ import multer from 'multer';
 import pool from '../db.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
 import { urlFotoMinuscula } from '../utils/fotos.js';
+import { registrarEvento } from '../utils/bitacora.js';
 
 const router = Router();
 const subida = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -19,7 +20,7 @@ async function exigirGestor(adminId) {
 // el mismo formato que usa el .txt que exporta este sistema) — una línea
 // por unidad física o ya con la cantidad sumada, cualquiera de los dos
 // casos se soporta sumando todo por código+talla acá mismo.
-function parsearStock(texto) {
+export function parsearStock(texto) {
   const porClave = new Map();
   for (const lineaCruda of texto.split(/\r?\n/)) {
     const linea = lineaCruda.trim();
@@ -46,13 +47,13 @@ function parsearStock(texto) {
 // no perder artículos que solo están de un lado. Reusada tanto por el
 // reporte completo (con foto/descr./detalle por tax) como por el conteo
 // rápido de pendientes que usa el gate de "cerrar inventario".
-async function obtenerFilasDiferencia(inventarioId) {
+export async function obtenerFilasDiferencia(inventarioId) {
   const { rows } = await pool.query(
     `SELECT COALESCE(cap.codigo, st.codigo) AS codigo,
             COALESCE(cap.talla, st.talla) AS talla,
             COALESCE(cap.cantidad, 0)::int AS cantidad_capturada,
             COALESCE(st.cantidad, 0)::int AS cantidad_stock,
-            rev.revisado_en
+            rev.revisado_en, rev.nota
      FROM (
        SELECT c.codigo, c.talla, SUM(c.cantidad)::int AS cantidad
        FROM capturas c JOIN taxes t ON t.id = c.tax_id
@@ -72,18 +73,18 @@ async function obtenerFilasDiferencia(inventarioId) {
   return rows;
 }
 
-// Cuántas diferencias quedan sin marcar "revisado" — usado por
-// POST /api/inventarios/:id/cerrar para exigir que se hayan validado antes
-// de poder cerrar. Si nunca se cargó un stock teórico para este inventario
-// no se exige nada (la función queda igual que antes de este cruce).
-export async function contarDiferenciasPendientes(inventarioId) {
+// Cuántas diferencias (más allá de la tolerancia del inventario) quedan sin
+// marcar "revisado" — usado por POST /api/inventarios/:id/cerrar para
+// exigir que se hayan validado antes de poder cerrar. Si nunca se cargó un
+// stock teórico para este inventario no se exige nada.
+export async function contarDiferenciasPendientes(inventarioId, tolerancia = 0) {
   const tieneStock = (
     await pool.query('SELECT 1 FROM stock_referencia WHERE inventario_id = $1 LIMIT 1', [inventarioId])
   ).rows.length > 0;
   if (!tieneStock) return 0;
 
   const filas = await obtenerFilasDiferencia(inventarioId);
-  return filas.filter((f) => f.cantidad_capturada !== f.cantidad_stock && !f.revisado_en).length;
+  return filas.filter((f) => Math.abs(f.cantidad_capturada - f.cantidad_stock) > tolerancia && !f.revisado_en).length;
 }
 
 // Cada carga reemplaza entera la referencia vigente del inventario — un
@@ -120,20 +121,28 @@ router.post('/:inventarioId/cargar', subida.single('archivo'), manejarAsync(asyn
     cliente.release();
   }
 
+  registrarEvento({
+    inventarioId,
+    adminId,
+    tipo: 'cargar_stock_teorico',
+    detalle: `${filas.length} código+talla cargados`,
+  });
+
   res.json({ filasCargadas: filas.length });
 }));
 
 // Cruce completo con foto/descripción y, para cada código+talla con
 // diferencia, en qué tax (y quién lo capturó) — para ir directo a
-// corregirlo desde el reporte.
+// corregirlo desde el reporte. Incluye la tolerancia del inventario para
+// que el frontend aplique el mismo criterio en todas sus estadísticas.
 router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
   const adminId = Number(req.query.adminId);
   if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const inventarioId = Number(req.params.inventarioId);
 
-  const cargaInfo = (
-    await pool.query('SELECT stock_cargado_en FROM inventarios WHERE id = $1', [inventarioId])
+  const inventario = (
+    await pool.query('SELECT stock_cargado_en, tolerancia_diferencia FROM inventarios WHERE id = $1', [inventarioId])
   ).rows[0];
 
   const rows = await obtenerFilasDiferencia(inventarioId);
@@ -193,11 +202,16 @@ router.get('/:inventarioId/diferencias', manejarAsync(async (req, res) => {
       cantidadStock: r.cantidad_stock,
       diferencia: r.cantidad_capturada - r.cantidad_stock,
       revisadoEn: r.revisado_en,
+      nota: r.nota,
       tax: detallePorClave.get(clave) ?? [],
     };
   });
 
-  res.json({ stockCargadoEn: cargaInfo?.stock_cargado_en ?? null, items: resultado });
+  res.json({
+    stockCargadoEn: inventario?.stock_cargado_en ?? null,
+    tolerancia: inventario?.tolerancia_diferencia ?? 0,
+    items: resultado,
+  });
 }));
 
 router.post('/:inventarioId/revisar', manejarAsync(async (req, res) => {
@@ -207,15 +221,61 @@ router.post('/:inventarioId/revisar', manejarAsync(async (req, res) => {
   const inventarioId = Number(req.params.inventarioId);
   const codigo = String(req.body?.codigo ?? '').trim();
   const talla = String(req.body?.talla ?? '').trim();
+  const nota = req.body?.nota ? String(req.body.nota).trim().slice(0, 500) || null : null;
   if (!/^\d{7}$/.test(codigo) || !/^\d{2}$/.test(talla)) return res.status(400).json({ error: 'datos_invalidos' });
 
   await pool.query(
-    `INSERT INTO stock_revisiones (inventario_id, codigo, talla, revisado_en, revisado_por_admin_id)
-     VALUES ($1, $2, $3, now(), $4)
-     ON CONFLICT (inventario_id, codigo, talla) DO UPDATE SET revisado_en = now(), revisado_por_admin_id = $4`,
-    [inventarioId, codigo, talla, adminId]
+    `INSERT INTO stock_revisiones (inventario_id, codigo, talla, revisado_en, revisado_por_admin_id, nota)
+     VALUES ($1, $2, $3, now(), $4, $5)
+     ON CONFLICT (inventario_id, codigo, talla) DO UPDATE SET revisado_en = now(), revisado_por_admin_id = $4, nota = $5`,
+    [inventarioId, codigo, talla, adminId, nota]
   );
+  registrarEvento({
+    inventarioId,
+    adminId,
+    tipo: 'marcar_revisado',
+    detalle: `${codigo}-${talla}${nota ? `: ${nota}` : ''}`,
+  });
   res.status(204).end();
+}));
+
+// Mismo reporte que /diferencias pero en CSV, para que pérdidas/región
+// pueda juntar varios inventarios en una planilla — el .txt de "Exportar
+// inventario" es la captura cruda, esto es el análisis ya cruzado.
+router.get('/:inventarioId/exportar', manejarAsync(async (req, res) => {
+  const adminId = Number(req.query.adminId);
+  if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
+
+  const inventarioId = Number(req.params.inventarioId);
+  const inventario = (await pool.query('SELECT numero_inventario FROM inventarios WHERE id = $1', [inventarioId])).rows[0];
+  if (!inventario) return res.status(404).json({ error: 'inventario_no_encontrado' });
+
+  const rows = await obtenerFilasDiferencia(inventarioId);
+  const codigos = [...new Set(rows.map((r) => r.codigo))];
+  const productos = codigos.length
+    ? await pool.query('SELECT codigo, talla, descripcion FROM productos_maestro WHERE codigo = ANY($1)', [codigos])
+    : { rows: [] };
+  const mapaDescripcion = new Map(productos.rows.map((p) => [`${p.codigo}-${p.talla}`, p.descripcion]));
+
+  const encabezado = 'codigo;talla;descripcion;capturado;stock;diferencia;revisado;nota';
+  const lineas = rows.map((r) => {
+    const descripcion = (mapaDescripcion.get(`${r.codigo}-${r.talla}`) ?? '').replace(/;/g, ',');
+    const nota = (r.nota ?? '').replace(/;/g, ',');
+    return [
+      r.codigo,
+      r.talla,
+      descripcion,
+      r.cantidad_capturada,
+      r.cantidad_stock,
+      r.cantidad_capturada - r.cantidad_stock,
+      r.revisado_en ? 'si' : 'no',
+      nota,
+    ].join(';');
+  });
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="diferencias-${inventario.numero_inventario}.csv"`);
+  res.send([encabezado, ...lineas].join('\n'));
 }));
 
 export default router;

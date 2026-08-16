@@ -13,6 +13,7 @@ import rutasCapturas from './routes/capturas.js';
 import rutasArticulos from './routes/articulos.js';
 import rutasAuditoria from './routes/auditoria.js';
 import rutasStock from './routes/stock.js';
+import rutasNotificaciones from './routes/notificaciones.js';
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.use('/api/capturas', rutasCapturas);
 app.use('/api/articulos', rutasArticulos);
 app.use('/api/auditoria', rutasAuditoria);
 app.use('/api/stock', rutasStock);
+app.use('/api/notificaciones', rutasNotificaciones);
 
 app.use((error, req, res, next) => {
   console.error(error);

@@ -128,6 +128,18 @@ export const api = {
   // Cruce contra el archivo de cierre de stock — solo admin/superadmin.
   cargarStock: (inventarioId, adminId, archivo) => subirArchivo(`/api/stock/${inventarioId}/cargar`, adminId, archivo),
   diferenciasStock: (inventarioId, adminId) => solicitar(`/api/stock/${inventarioId}/diferencias?adminId=${adminId}`),
-  marcarRevisadoStock: (inventarioId, adminId, codigo, talla) =>
-    post(`/api/stock/${inventarioId}/revisar`, { adminId, codigo, talla }),
+  marcarRevisadoStock: (inventarioId, adminId, codigo, talla, nota) =>
+    post(`/api/stock/${inventarioId}/revisar`, { adminId, codigo, talla, nota }),
+  urlExportarDiferencias: (inventarioId, adminId) => `${URL_BASE}/api/stock/${inventarioId}/exportar?adminId=${adminId}`,
+
+  // Bitácora por inventario (quién cerró/reabrió/borró/validó/marcó revisado).
+  eventosInventario: (inventarioId, adminId) => solicitar(`/api/inventarios/${inventarioId}/eventos?adminId=${adminId}`),
+
+  // Notificaciones persistentes (leído compartido entre admins).
+  listarNotificaciones: (adminId) => solicitar(`/api/notificaciones?adminId=${adminId}`),
+  marcarNotificacionesLeidas: (adminId) => post('/api/notificaciones/marcar-leidas', { adminId }),
+
+  // Histórico: qué código+talla se repite con diferencia entre varios
+  // inventarios de la misma tienda.
+  historicoDiferencias: (edp, adminId) => solicitar(`/api/auditoria/historico/${edp}?auditorId=${adminId}`),
 };

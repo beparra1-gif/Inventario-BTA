@@ -576,6 +576,58 @@ label.etiqueta {
   cursor: default;
 }
 
+.nav-admin-campana {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 8px;
+  border-radius: var(--radio-chico);
+  flex-shrink: 0;
+}
+.nav-admin-campana:hover { background: var(--fondo-sutil); }
+
+.nav-admin-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--primario);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 999px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.nav-admin-notificaciones {
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.nav-admin-notificaciones-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--borde);
+}
+
+.nav-admin-notificacion {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--borde);
+}
+.nav-admin-notificacion.no-leida {
+  background: color-mix(in srgb, var(--primario) 6%, transparent);
+}
+.nav-admin-notificacion:last-child { border-bottom: none; }
+
 .nav-admin-usuario { position: relative; flex-shrink: 0; }
 
 .nav-admin-usuario-boton {

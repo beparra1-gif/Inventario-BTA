@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../db.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
+import { registrarEvento } from '../utils/bitacora.js';
 
 const router = Router();
 
@@ -158,6 +159,13 @@ router.delete('/:id', manejarAsync(async (req, res) => {
 
   await pool.query('DELETE FROM taxes WHERE id = $1', [id]);
   req.app.locals.io.to(`inventario:${tax.inventario_id}`).emit('tax:eliminado', { id, numeroTax: tax.numero_tax });
+  const adminId = Number(req.body?.adminId ?? req.query.adminId);
+  registrarEvento({
+    inventarioId: tax.inventario_id,
+    adminId: Number.isInteger(adminId) ? adminId : null,
+    tipo: 'borrar_tax',
+    detalle: `Tax ${tax.numero_tax}`,
+  });
   res.status(204).end();
 }));
 

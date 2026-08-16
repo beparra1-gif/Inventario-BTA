@@ -3,6 +3,7 @@ import pool from '../db.js';
 import { agruparCapturas, generarLineasExportacion, nombreArchivoExportacion } from '../utils/ean13.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
 import { contarDiferenciasPendientes } from './stock.js';
+import { registrarEvento } from '../utils/bitacora.js';
 
 const router = Router();
 
@@ -30,6 +31,8 @@ router.post('/', manejarAsync(async (req, res) => {
   const numeroInventario = String(req.body?.numeroInventario ?? '').trim();
   const edp = Number(req.body?.edp);
   const creadoPorAdminId = Number(req.body?.creadoPorAdminId);
+  const toleranciaCruda = Number(req.body?.toleranciaDiferencia);
+  const toleranciaDiferencia = Number.isInteger(toleranciaCruda) && toleranciaCruda >= 0 ? toleranciaCruda : 0;
 
   if (!numeroInventario || !Number.isInteger(edp) || !Number.isInteger(creadoPorAdminId)) {
     return res.status(400).json({ error: 'datos_incompletos' });
@@ -38,9 +41,9 @@ router.post('/', manejarAsync(async (req, res) => {
 
   try {
     const resultado = await pool.query(
-      `INSERT INTO inventarios (numero_inventario, edp, creado_por_admin_id)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [numeroInventario, edp, creadoPorAdminId]
+      `INSERT INTO inventarios (numero_inventario, edp, creado_por_admin_id, tolerancia_diferencia)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [numeroInventario, edp, creadoPorAdminId, toleranciaDiferencia]
     );
     res.status(201).json(sinClaveHash(resultado.rows[0]));
   } catch (error) {
@@ -187,7 +190,8 @@ router.post('/:id/cerrar', manejarAsync(async (req, res) => {
   if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const id = Number(req.params.id);
-  const pendientes = await contarDiferenciasPendientes(id);
+  const inventarioActual = (await pool.query('SELECT tolerancia_diferencia FROM inventarios WHERE id = $1', [id])).rows[0];
+  const pendientes = await contarDiferenciasPendientes(id, inventarioActual?.tolerancia_diferencia ?? 0);
   if (pendientes > 0) return res.status(409).json({ error: 'diferencias_sin_validar', pendientes });
 
   const resultado = await pool.query(
@@ -195,6 +199,7 @@ router.post('/:id/cerrar', manejarAsync(async (req, res) => {
     [id]
   );
   if (!resultado.rows.length) return res.status(409).json({ error: 'inventario_no_abierto' });
+  registrarEvento({ inventarioId: id, adminId, tipo: 'cerrar_inventario' });
   res.json(sinClaveHash(resultado.rows[0]));
 }));
 
@@ -215,6 +220,7 @@ router.post('/:id/reabrir', manejarAsync(async (req, res) => {
     [id]
   );
   if (!resultado.rows.length) return res.status(409).json({ error: 'inventario_no_estaba_cerrado' });
+  registrarEvento({ inventarioId: id, adminId, tipo: 'reabrir_inventario' });
   res.json(sinClaveHash(resultado.rows[0]));
 }));
 
@@ -310,9 +316,37 @@ router.delete('/:id', manejarAsync(async (req, res) => {
   if (!(await exigirGestor(adminId))) return res.status(403).json({ error: 'requiere_admin' });
 
   const id = Number(req.params.id);
-  const resultado = await pool.query('DELETE FROM inventarios WHERE id = $1 RETURNING id', [id]);
-  if (!resultado.rows.length) return res.status(404).json({ error: 'inventario_no_encontrado' });
+  const previo = (await pool.query('SELECT numero_inventario FROM inventarios WHERE id = $1', [id])).rows[0];
+  if (!previo) return res.status(404).json({ error: 'inventario_no_encontrado' });
+
+  // Se registra antes de borrar (no después): el FK es ON DELETE SET NULL,
+  // así este evento sobrevive al borrado, con el número como texto porque
+  // la fila real ya no va a existir para consultarlo.
+  await registrarEvento({ inventarioId: id, adminId, tipo: 'borrar_inventario', detalle: `Inventario ${previo.numero_inventario}` });
+
+  await pool.query('DELETE FROM inventarios WHERE id = $1', [id]);
   res.status(204).end();
+}));
+
+// Bitácora del inventario: quién cerró/reabrió/borró tax, validó, marcó
+// revisado o cargó el stock teórico, y cuándo — para que quede algo más
+// que el estado final. Cualquier cuenta válida de admins puede verla.
+router.get('/:id/eventos', manejarAsync(async (req, res) => {
+  const adminId = Number(req.query.adminId);
+  const admin = await obtenerAdmin(adminId);
+  if (!admin) return res.status(403).json({ error: 'requiere_admin' });
+
+  const id = Number(req.params.id);
+  const { rows } = await pool.query(
+    `SELECT e.id, e.tipo, e.detalle, e.creado_en, a.nombre AS admin_nombre, a.email AS admin_email
+     FROM eventos_auditoria e
+     LEFT JOIN admins a ON a.id = e.admin_id
+     WHERE e.inventario_id = $1
+     ORDER BY e.creado_en DESC
+     LIMIT 100`,
+    [id]
+  );
+  res.json(rows);
 }));
 
 export default router;

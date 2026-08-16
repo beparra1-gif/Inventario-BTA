@@ -2,6 +2,7 @@ import { Router } from 'express';
 import pool from '../db.js';
 import { hashClave, verificarClave, generarClaveProvisoria } from '../utils/claves.js';
 import { manejarAsync } from '../utils/manejarAsync.js';
+import { crearNotificacion } from '../utils/notificaciones.js';
 
 const router = Router();
 
@@ -204,6 +205,13 @@ router.post('/:id/solicitar-modificacion', manejarAsync(async (req, res) => {
     alias: participante.alias,
     nombre: participante.nombre,
     numeroTax,
+  });
+  crearNotificacion({
+    tipo: 'solicitud-modificar',
+    mensaje: numeroTax
+      ? `${participante.nombre || participante.alias} necesita modificar el tax ${numeroTax}`
+      : `${participante.nombre || participante.alias} necesita que le reabras algo`,
+    inventarioId: participante.inventario_id,
   });
   res.status(204).end();
 }));

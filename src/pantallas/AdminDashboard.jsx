@@ -9,12 +9,14 @@ import { PantallaTaxes } from './PantallaTaxes.jsx';
 import { PantallaCaptura } from './PantallaCaptura.jsx';
 import { AuditoriaPanel } from './AuditoriaPanel.jsx';
 import { CruceStockScreen } from './CruceStockScreen.jsx';
+import { ActividadInventarioScreen } from './ActividadInventarioScreen.jsx';
+import { HistoricoTiendaScreen } from './HistoricoTiendaScreen.jsx';
 import { HeaderAdmin } from '../componentes/HeaderAdmin.jsx';
 
 export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const mostrarToast = useToast();
 
-  // 'menu' | 'crear' | 'revisar' | 'gestionar' | 'admins' | 'maestros' | 'perfil' | 'auditoria' | 'cruce'
+  // 'menu' | 'crear' | 'revisar' | 'gestionar' | 'admins' | 'maestros' | 'perfil' | 'auditoria' | 'cruce' | 'actividad'
   const [vista, setVista] = useState('menu');
 
   // --- Crear inventario (wizard) ---
@@ -22,6 +24,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const [resultadosCrear, setResultadosCrear] = useState([]);
   const [tiendaCrear, setTiendaCrear] = useState(null);
   const [numeroInventarioCrear, setNumeroInventarioCrear] = useState('');
+  const [toleranciaCrear, setToleranciaCrear] = useState('0');
   const [nombresPendientes, setNombresPendientes] = useState([]);
   const [nombrePendiente, setNombrePendiente] = useState('');
   const [creando, setCreando] = useState(false);
@@ -235,6 +238,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
         numeroInventario: numeroInventarioCrear.trim(),
         edp: tiendaCrear.edp,
         creadoPorAdminId: admin.id,
+        toleranciaDiferencia: Number(toleranciaCrear) || 0,
       });
 
       const generadas = [];
@@ -251,7 +255,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
       cargarRecientes();
 
       setBusquedaCrear(''); setResultadosCrear([]); setTiendaCrear(null);
-      setNumeroInventarioCrear(''); setNombresPendientes([]);
+      setNumeroInventarioCrear(''); setToleranciaCrear('0'); setNombresPendientes([]);
     } catch (error) {
       mostrarToast(error.info?.error === 'numero_inventario_ya_existe' ? 'Ese número de inventario ya existe' : 'No se pudo crear el inventario', 'error');
     } finally {
@@ -626,6 +630,8 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
 
             {vista === 'auditoria' && <AuditoriaPanel adminId={admin.id} onVolver={() => setVista('menu')} />}
 
+            {vista === 'historico' && <HistoricoTiendaScreen adminId={admin.id} onVolver={() => setVista('menu')} />}
+
             {vista === 'cruce' && inventario && (
               <CruceStockScreen
                 inventario={inventario}
@@ -633,6 +639,10 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                 vistaInicial={cruceVistaInicial}
                 onVolver={() => setVista('gestionar')}
               />
+            )}
+
+            {vista === 'actividad' && inventario && (
+              <ActividadInventarioScreen inventario={inventario} adminId={admin.id} onVolver={() => setVista('gestionar')} />
             )}
 
             {vista === 'maestros' && admin.rol === 'superadmin' && (
@@ -879,6 +889,20 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                     <label className="etiqueta">Número de inventario</label>
                     <input className="campo" value={numeroInventarioCrear} onChange={(e) => setNumeroInventarioCrear(e.target.value)} />
 
+                    <label className="etiqueta">Tolerancia del cruce de stock (unidades)</label>
+                    <p style={{ fontSize: 12, color: 'var(--texto-tenue)', margin: '-4px 0 10px' }}>
+                      Diferencias dentro de este margen no exigen validación para cerrar. Déjalo en 0 si querés que cualquier
+                      diferencia, por chica que sea, tenga que revisarse.
+                    </p>
+                    <input
+                      className="campo"
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      value={toleranciaCrear}
+                      onChange={(e) => setToleranciaCrear(e.target.value)}
+                    />
+
                     <label className="etiqueta">Personal de captura</label>
                     <p style={{ fontSize: 12, color: 'var(--texto-tenue)', margin: '-4px 0 10px' }}>
                       Cada uno entra con su inicial+apellido y una clave numérica propia que se genera al crear el inventario.
@@ -986,6 +1010,9 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                   </button>
                   <button onClick={() => { setCruceVistaInicial('cargar'); setVista('cruce'); }}>
                     Actualizar stock teórico
+                  </button>
+                  <button onClick={() => setVista('actividad')}>
+                    Actividad reciente
                   </button>
                   {inventario.estado === 'abierto' ? (
                     <button onClick={cerrarInventario}>Cerrar inventario</button>
