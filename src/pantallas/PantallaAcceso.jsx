@@ -45,7 +45,7 @@ export function PantallaAcceso({ onAcceso, onIrAdmin }) {
     <div className="pantalla">
       <div className="contenedor">
         <div className="tarjeta">
-          <h1 className="titulo-pantalla">Inventario BTA</h1>
+          <h1 className="titulo-pantalla">MODULO CAPTURA DE INVENTARIO</h1>
           <p className="subtitulo">Selecciona tu tienda para empezar a capturar</p>
 
           <input

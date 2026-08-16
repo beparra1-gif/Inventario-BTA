@@ -13,8 +13,8 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
       },
       manifest: {
-        name: 'Inventario BTA',
-        short_name: 'Inventario BTA',
+        name: 'MODULO CAPTURA DE INVENTARIO',
+        short_name: 'MODULO CAPTURA DE INVENTARIO',
         description: 'Captura de inventario por tienda con validación contra maestro de productos.',
         theme_color: '#E20613',
         background_color: '#F3F4F6',

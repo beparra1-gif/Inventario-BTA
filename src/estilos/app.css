@@ -442,20 +442,27 @@ label.etiqueta {
 }
 
 .encabezado-admin-marca {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
   font-weight: 800;
-  font-size: 16px;
-  letter-spacing: -0.3px;
+  font-size: 14px;
+  letter-spacing: -0.2px;
   color: var(--texto);
   background: none;
   border: none;
   cursor: pointer;
   padding: 4px 0;
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 .encabezado-admin-marca span { color: var(--primario); }
+
+@media (min-width: 500px) {
+  .encabezado-admin-marca { font-size: 16px; max-width: none; white-space: normal; }
+}
 
 .nav-admin-desktop {
   display: none;

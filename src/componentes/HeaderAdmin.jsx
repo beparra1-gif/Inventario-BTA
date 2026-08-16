@@ -59,8 +59,8 @@ export function HeaderAdmin({ admin, vista, onNavegar, onSalir }) {
   return (
     <div className="encabezado-admin">
       <div className="encabezado-admin-fila">
-        <button className="encabezado-admin-marca" onClick={() => ir('menu')}>
-          Inventario <span>BTA</span>
+        <button className="encabezado-admin-marca" onClick={() => ir('menu')} title="MODULO CAPTURA DE INVENTARIO">
+          MODULO <span>CAPTURA</span> DE INVENTARIO
         </button>
 
         <nav className="nav-admin-desktop">
