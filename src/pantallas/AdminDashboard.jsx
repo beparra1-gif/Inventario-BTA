@@ -7,6 +7,7 @@ import { derivarAlias, aliasDisponible } from '../utilidades/alias.js';
 import { formatearFecha } from '../utilidades/fecha.js';
 import { PantallaTaxes } from './PantallaTaxes.jsx';
 import { PantallaCaptura } from './PantallaCaptura.jsx';
+import { AuditoriaPanel } from './AuditoriaPanel.jsx';
 
 export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const mostrarToast = useToast();
@@ -710,6 +711,9 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                       Revisar inventarios realizados
                     </button>
                   </div>
+                  <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginTop: 12 }} onClick={() => setVista('auditoria')}>
+                    Auditoría — validar tax de cualquier inventario
+                  </button>
                 </div>
 
                 {recientes.length > 0 && (
@@ -737,6 +741,8 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                 )}
               </>
             )}
+
+            {vista === 'auditoria' && <AuditoriaPanel adminId={admin.id} onVolver={() => setVista('menu')} />}
 
             {vista === 'admins' && admin.rol === 'superadmin' && (
               <div className="tarjeta">
