@@ -414,18 +414,225 @@ label.etiqueta {
 .toast.error { background: var(--acento); color: white; }
 .toast.ok { background: var(--exito); color: white; }
 
-/* ---------- Dashboard admin (grid en PC, columna en celular) ---------- */
-
-.grilla-admin {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 860px) {
-  .grilla-admin { grid-template-columns: 320px 1fr; align-items: start; }
-}
-
 .tabla-resumen { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tabla-resumen th, .tabla-resumen td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borde); }
 .tabla-resumen th { color: var(--texto-tenue); font-weight: 600; text-transform: uppercase; font-size: 11px; }
+
+/* ---------- Header admin (nav con menús desplegables) ---------- */
+
+.encabezado-admin {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  width: 100%;
+  background: color-mix(in srgb, var(--fondo-tarjeta) 92%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--borde);
+}
+
+.encabezado-admin-fila {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.encabezado-admin-marca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.3px;
+  color: var(--texto);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+.encabezado-admin-marca span { color: var(--primario); }
+
+.nav-admin-desktop {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.nav-admin-espaciador { flex: 1; }
+
+@media (min-width: 860px) {
+  .nav-admin-desktop { display: flex; }
+  .nav-admin-movil { display: none; }
+}
+
+.nav-admin-item { position: relative; }
+
+.nav-admin-boton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--texto-tenue);
+  padding: 9px 12px;
+  border-radius: var(--radio-chico);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.nav-admin-boton:hover { color: var(--texto); background: var(--fondo-sutil); }
+.nav-admin-boton.activo { color: var(--primario); background: rgba(226, 6, 19, 0.08); }
+
+.nav-admin-desplegable {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--fondo-tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  box-shadow: var(--sombra);
+  min-width: 230px;
+  padding: 6px;
+  z-index: 70;
+}
+
+.nav-admin-desplegable button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  color: var(--texto);
+  padding: 10px 12px;
+  border-radius: var(--radio-chico);
+}
+.nav-admin-desplegable button:hover { background: var(--fondo-sutil); color: var(--primario); }
+.nav-admin-desplegable button.activo { color: var(--primario); font-weight: 700; }
+
+.nav-admin-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+
+.nav-admin-usuario { position: relative; flex-shrink: 0; }
+
+.nav-admin-usuario-boton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--fondo-sutil);
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  padding: 6px 14px 6px 6px;
+  cursor: pointer;
+  font: inherit;
+}
+.nav-admin-usuario-boton:hover { border-color: var(--primario); }
+
+.nav-admin-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primario);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.nav-admin-usuario-nombre {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-admin-desplegable-derecha { left: auto; right: 0; }
+
+/* Menú móvil: hoja simple con secciones, sin depender de JS para el ancho —
+   se muestra/oculta solo con la misma media query que el nav de escritorio. */
+.nav-admin-movil-boton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radio-chico);
+  background: var(--fondo-sutil);
+  border: 1px solid var(--borde);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.nav-admin-movil-panel {
+  border-top: 1px solid var(--borde);
+  padding: 8px 16px 16px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.nav-admin-movil-seccion {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--texto-tenue);
+  margin: 14px 0 4px;
+}
+
+.nav-admin-movil-panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  color: var(--texto);
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--borde);
+}
+.nav-admin-movil-panel button.activo { color: var(--primario); font-weight: 700; }
+
+/* ---------- Pantalla principal del admin (una sola acción visible) ---------- */
+
+.hero-crear {
+  width: 100%;
+  max-width: 480px;
+  margin: 10vh auto 0;
+  text-align: center;
+}
+
+.hero-crear h1 {
+  font-size: 1.5em;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  margin: 0 0 6px;
+}
+
+.hero-crear p {
+  color: var(--texto-tenue);
+  font-size: 14px;
+  margin: 0 0 28px;
+}

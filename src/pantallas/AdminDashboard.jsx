@@ -9,11 +9,12 @@ import { PantallaTaxes } from './PantallaTaxes.jsx';
 import { PantallaCaptura } from './PantallaCaptura.jsx';
 import { AuditoriaPanel } from './AuditoriaPanel.jsx';
 import { CruceStockScreen } from './CruceStockScreen.jsx';
+import { HeaderAdmin } from '../componentes/HeaderAdmin.jsx';
 
 export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const mostrarToast = useToast();
 
-  // 'menu' | 'crear' | 'revisar' | 'gestionar' | 'admins' | 'perfil' | 'auditoria' | 'cruce'
+  // 'menu' | 'crear' | 'revisar' | 'gestionar' | 'admins' | 'maestros' | 'perfil' | 'auditoria' | 'cruce'
   const [vista, setVista] = useState('menu');
 
   // --- Crear inventario (wizard) ---
@@ -84,17 +85,21 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     return () => clearTimeout(timeout);
   }, [busquedaCrear]);
 
+  // Sin texto de búsqueda, "Revisar inventarios" muestra los últimos con
+  // más contexto (unidades, quién participó) en vez de una lista plana —
+  // así hace también de "últimos inventarios" sin duplicar esa vista en
+  // la pantalla principal.
   useEffect(() => {
     if (vista !== 'revisar') return undefined;
+    if (!busquedaRevisar.trim()) {
+      cargarRecientes();
+      return undefined;
+    }
     const timeout = setTimeout(async () => {
       try { setResultadosRevisar(await api.buscarInventarios(busquedaRevisar.trim(), admin.id)); } catch { /* se reintenta */ }
     }, 250);
     return () => clearTimeout(timeout);
   }, [busquedaRevisar, vista]);
-
-  useEffect(() => {
-    cargarRecientes();
-  }, []);
 
   useEffect(() => {
     if (vista === 'admins') cargarAdmins();
@@ -462,7 +467,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   }
 
   async function cargarRecientes() {
-    try { setRecientes(await api.inventariosRecientes(admin.id, 2)); } catch { /* se reintenta con el próximo refresco */ }
+    try { setRecientes(await api.inventariosRecientes(admin.id, 12)); } catch { /* se reintenta con el próximo refresco */ }
   }
 
   async function cargarAdmins() {
@@ -574,53 +579,6 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     }
   }
 
-  const panelAdminInvitar = admin.rol === 'superadmin' && (
-    <div className="tarjeta">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <h3 style={{ margin: 0 }}>Administradores</h3>
-        <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista(vista === 'admins' ? 'menu' : 'admins')}>
-          {vista === 'admins' ? 'Ocultar lista' : 'Ver todos'}
-        </button>
-      </div>
-      <label className="etiqueta">Correo</label>
-      <input className="campo" type="email" value={emailNuevoAdmin} onChange={(e) => setEmailNuevoAdmin(e.target.value)} />
-      <label className="etiqueta">Nombre</label>
-      <input className="campo" value={nombreNuevoAdmin} onChange={(e) => setNombreNuevoAdmin(e.target.value)} />
-      <label className="etiqueta">Rol</label>
-      <select className="campo" value={rolNuevoAdmin} onChange={(e) => setRolNuevoAdmin(e.target.value)}>
-        <option value="admin">Admin</option>
-        <option value="superadmin">Superadmin</option>
-        <option value="auditor">Auditor</option>
-      </select>
-      <button className="btn btn-secundario btn-chico" style={{ width: '100%' }} onClick={invitarAdmin} disabled={!emailNuevoAdmin}>
-        Agregar
-      </button>
-      {adminInvitado && (
-        <div style={{ marginTop: 12, background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 12, fontSize: 13 }}>
-          <strong>{adminInvitado.email}</strong> agregado. Contraseña temporal (se le pide cambiarla al entrar):
-          <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 1, marginTop: 4 }}>{adminInvitado.passwordTemporal}</div>
-        </div>
-      )}
-    </div>
-  );
-
-  const panelMaestros = admin.rol === 'superadmin' && (
-    <div className="tarjeta">
-      <h3 style={{ marginTop: 0 }}>Maestros</h3>
-      <label className="etiqueta">Tiendas (.xlsx)</label>
-      <input ref={inputTiendasRef} className="campo" type="file" accept=".xlsx" disabled={subiendoTiendas} onChange={subirMaestroTiendas} />
-      {subiendoTiendas && <p style={{ fontSize: 13, color: 'var(--texto-tenue)', marginTop: -8 }}>Importando…</p>}
-      <label className="etiqueta">Productos + reglas de talla (.csv)</label>
-      <input ref={inputProductosRef} className="campo" type="file" accept=".csv" disabled={subiendoProductos} onChange={subirMaestroProductos} />
-      {subiendoProductos && (
-        <p style={{ fontSize: 13, color: 'var(--texto-tenue)', marginTop: -8 }}>
-          Importando… {progresoProductos ? `${progresoProductos.toLocaleString('es-CL')} filas procesadas` : 'empezando'}
-          {' '}(puede tardar unos minutos, son ~600 mil filas — puedes seguir usando el panel mientras corre).
-        </p>
-      )}
-    </div>
-  );
-
   // Modo captura del admin: pantalla completa reusando tal cual las mismas
   // PantallaTaxes/PantallaCaptura del capturador (mismo look, mismo
   // escáner, misma cola offline) en vez de reimplementar todo — el admin
@@ -646,63 +604,19 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   }
 
   return (
-    <div className="pantalla" style={{ alignItems: 'stretch' }}>
-      <div className="contenedor-ancho">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h1 style={{ margin: 0, fontSize: '1.4em' }}>Panel de administración</h1>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-            <button className="btn-texto" onClick={() => setVista('perfil')}>Mi perfil</button>
-            <button className="btn-texto" onClick={onSalir}>Salir</button>
-          </div>
-        </div>
+    <div className="pantalla" style={{ alignItems: 'stretch', padding: 0 }}>
+      <HeaderAdmin admin={admin} vista={vista} onNavegar={setVista} onSalir={onSalir} />
 
-        <div className="grilla-admin">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {panelMaestros}
-            {panelAdminInvitar}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="contenedor-ancho" style={{ padding: '24px 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {vista === 'menu' && (
-              <>
-                <div className="tarjeta">
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <button className="btn btn-primario" style={{ height: 90, flexDirection: 'column', fontSize: 16 }} onClick={() => setVista('crear')}>
-                      + Crear inventario
-                    </button>
-                    <button className="btn btn-secundario" style={{ height: 90, flexDirection: 'column', fontSize: 16 }} onClick={() => setVista('revisar')}>
-                      Revisar inventarios realizados
-                    </button>
-                  </div>
-                  <button className="btn btn-secundario btn-chico" style={{ width: '100%', marginTop: 12 }} onClick={() => setVista('auditoria')}>
-                    Auditoría — validar tax de cualquier inventario
-                  </button>
-                </div>
-
-                {recientes.length > 0 && (
-                  <div className="tarjeta">
-                    <label className="etiqueta">Últimos inventarios</label>
-                    {recientes.map((r) => (
-                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--borde)' }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{r.numero_inventario} · {r.edp} {r.tienda_glosa}</div>
-                          <div style={{ fontSize: 12, color: 'var(--texto-tenue)' }}>
-                            {r.estado} · {r.total_unidades} unidad{r.total_unidades === 1 ? '' : 'es'} · {r.personas.length > 0 ? r.personas.join(', ') : 'sin personal'}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-                          <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => abrirInventarioExistente({ edp: r.edp, glosa: r.tienda_glosa }, r)}>
-                            Ver
-                          </button>
-                          <button className="btn-texto" style={{ padding: 0, fontSize: 12, color: '#B91C1C' }} onClick={() => borrarInventario(r)}>
-                            Borrar
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
+              <div className="hero-crear">
+                <h1>Hola, {admin.nombre || admin.email}</h1>
+                <p>¿Qué inventario vamos a levantar hoy?</p>
+                <button className="btn btn-primario" style={{ height: 64, fontSize: 17 }} onClick={() => setVista('crear')}>
+                  + Crear inventario
+                </button>
+              </div>
             )}
 
             {vista === 'auditoria' && <AuditoriaPanel adminId={admin.id} onVolver={() => setVista('menu')} />}
@@ -716,11 +630,54 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
               />
             )}
 
+            {vista === 'maestros' && admin.rol === 'superadmin' && (
+              <div className="tarjeta" style={{ maxWidth: 560 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <h3 style={{ margin: 0 }}>Maestros</h3>
+                  <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista('menu')}>‹ Volver</button>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--texto-tenue)', margin: '-4px 0 16px' }}>
+                  Reemplaza los importadores de línea de comandos: sube acá el archivo y se actualiza para todas las tiendas.
+                </p>
+                <label className="etiqueta">Tiendas (.xlsx)</label>
+                <input ref={inputTiendasRef} className="campo" type="file" accept=".xlsx" disabled={subiendoTiendas} onChange={subirMaestroTiendas} />
+                {subiendoTiendas && <p style={{ fontSize: 13, color: 'var(--texto-tenue)', marginTop: -8 }}>Importando…</p>}
+                <label className="etiqueta">Productos + reglas de talla (.csv)</label>
+                <input ref={inputProductosRef} className="campo" type="file" accept=".csv" disabled={subiendoProductos} onChange={subirMaestroProductos} />
+                {subiendoProductos && (
+                  <p style={{ fontSize: 13, color: 'var(--texto-tenue)', marginTop: -8 }}>
+                    Importando… {progresoProductos ? `${progresoProductos.toLocaleString('es-CL')} filas procesadas` : 'empezando'}
+                    {' '}(puede tardar unos minutos, son ~600 mil filas — puedes seguir usando el panel mientras corre).
+                  </p>
+                )}
+              </div>
+            )}
+
             {vista === 'admins' && admin.rol === 'superadmin' && (
-              <div className="tarjeta">
+              <div className="tarjeta" style={{ maxWidth: 640 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <h3 style={{ margin: 0 }}>Administradores</h3>
                   <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista('menu')}>‹ Volver</button>
+                </div>
+
+                <div style={{ background: 'var(--fondo-sutil)', border: '1px solid var(--borde)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                  <label className="etiqueta">Agregar administrador</label>
+                  <input className="campo" type="email" placeholder="Correo" value={emailNuevoAdmin} onChange={(e) => setEmailNuevoAdmin(e.target.value)} />
+                  <input className="campo" placeholder="Nombre" value={nombreNuevoAdmin} onChange={(e) => setNombreNuevoAdmin(e.target.value)} />
+                  <select className="campo" value={rolNuevoAdmin} onChange={(e) => setRolNuevoAdmin(e.target.value)}>
+                    <option value="admin">Admin</option>
+                    <option value="superadmin">Superadmin</option>
+                    <option value="auditor">Auditor</option>
+                  </select>
+                  <button className="btn btn-secundario btn-chico" style={{ width: '100%' }} onClick={invitarAdmin} disabled={!emailNuevoAdmin}>
+                    Agregar
+                  </button>
+                  {adminInvitado && (
+                    <div style={{ marginTop: 12, fontSize: 13 }}>
+                      <strong>{adminInvitado.email}</strong> agregado. Contraseña temporal (se le pide cambiarla al entrar):
+                      <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: 1, marginTop: 4 }}>{adminInvitado.passwordTemporal}</div>
+                    </div>
+                  )}
                 </div>
 
                 {passwordsGeneradas.length > 0 && (
@@ -950,36 +907,68 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
             )}
 
             {vista === 'revisar' && (
-              <div className="tarjeta">
+              <div className="tarjeta" style={{ maxWidth: 720 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <h3 style={{ margin: 0 }}>Revisar inventarios realizados</h3>
                   <button className="btn-texto" style={{ padding: 0 }} onClick={() => setVista('menu')}>‹ Volver</button>
                 </div>
                 <input className="campo" placeholder="Buscar por número, tienda o EDP..." value={busquedaRevisar} onChange={(e) => setBusquedaRevisar(e.target.value)} autoFocus />
-                {resultadosRevisar.map((r) => (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginBottom: 8 }}>
-                    <button
-                      className="btn btn-secundario"
-                      style={{ flex: 1, justifyContent: 'space-between', textAlign: 'left' }}
-                      onClick={() => abrirInventarioExistente({ edp: r.edp, glosa: r.tienda_glosa }, r)}
-                    >
-                      <span>{r.numero_inventario} · {r.edp} {r.tienda_glosa}</span>
-                      <span style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700, color: 'var(--texto-tenue)' }}>
-                        {r.estado} · {formatearFecha(r.creado_en)}
-                      </span>
-                    </button>
-                    <button
-                      className="btn btn-secundario btn-chico"
-                      title="Borrar inventario"
-                      style={{ color: '#B91C1C', flexShrink: 0 }}
-                      onClick={() => borrarInventario(r)}
-                    >
-                      <IconoEliminar tamano={16} />
-                    </button>
-                  </div>
-                ))}
-                {resultadosRevisar.length === 0 && (
-                  <p style={{ textAlign: 'center', color: 'var(--texto-tenue)', fontSize: 13 }}>Sin resultados.</p>
+
+                {!busquedaRevisar.trim() ? (
+                  <>
+                    {recientes.length > 0 && (
+                      <label className="etiqueta">Últimos inventarios</label>
+                    )}
+                    {recientes.map((r) => (
+                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--borde)' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{r.numero_inventario} · {r.edp} {r.tienda_glosa}</div>
+                          <div style={{ fontSize: 12, color: 'var(--texto-tenue)' }}>
+                            {r.estado} · {r.total_unidades} unidad{r.total_unidades === 1 ? '' : 'es'} · {r.personas.length > 0 ? r.personas.join(', ') : 'sin personal'}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+                          <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => abrirInventarioExistente({ edp: r.edp, glosa: r.tienda_glosa }, r)}>
+                            Ver
+                          </button>
+                          <button className="btn-texto" style={{ padding: 0, fontSize: 12, color: '#B91C1C' }} onClick={() => borrarInventario(r)}>
+                            Borrar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {recientes.length === 0 && (
+                      <p style={{ textAlign: 'center', color: 'var(--texto-tenue)', fontSize: 13 }}>Todavía no hay inventarios.</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {resultadosRevisar.map((r) => (
+                      <div key={r.id} style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginBottom: 8 }}>
+                        <button
+                          className="btn btn-secundario"
+                          style={{ flex: 1, justifyContent: 'space-between', textAlign: 'left' }}
+                          onClick={() => abrirInventarioExistente({ edp: r.edp, glosa: r.tienda_glosa }, r)}
+                        >
+                          <span>{r.numero_inventario} · {r.edp} {r.tienda_glosa}</span>
+                          <span style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700, color: 'var(--texto-tenue)' }}>
+                            {r.estado} · {formatearFecha(r.creado_en)}
+                          </span>
+                        </button>
+                        <button
+                          className="btn btn-secundario btn-chico"
+                          title="Borrar inventario"
+                          style={{ color: '#B91C1C', flexShrink: 0 }}
+                          onClick={() => borrarInventario(r)}
+                        >
+                          <IconoEliminar tamano={16} />
+                        </button>
+                      </div>
+                    ))}
+                    {resultadosRevisar.length === 0 && (
+                      <p style={{ textAlign: 'center', color: 'var(--texto-tenue)', fontSize: 13 }}>Sin resultados.</p>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1199,7 +1188,6 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                 </div>
               </>
             )}
-          </div>
         </div>
       </div>
     </div>
