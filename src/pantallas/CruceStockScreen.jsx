@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { useToast } from '../contexto/ToastContext.jsx';
 import { formatearFecha } from '../utilidades/fecha.js';
 import { fueraDeTolerancia, agruparPorCodigo, participantesDe, calcularEstadisticas } from '../utilidades/diferenciasStock.js';
-import { EditorCorreccionTax } from './EditorCorreccionTax.jsx';
+import { EditorTax } from './EditorTax.jsx';
 
 // Tabla talla por talla de un producto — se usa tanto pegada bajo la fila
 // en vista lista como adentro del modal en vista cuadrícula, así el
@@ -45,9 +45,8 @@ function TablaTallasGrupo({ grupo, tolerancia, onCorregir, onMarcarRevisado }) {
                               participanteId: tx.participanteId,
                               alias: tx.alias,
                               nombre: tx.nombre,
-                              codigo: t.codigo,
-                              talla: t.talla,
-                              tallaReal: t.tallaReal,
+                              codigoDestacado: t.codigo,
+                              tallaDestacada: t.talla,
                             })}
                           >
                             Corregir
@@ -487,7 +486,7 @@ export function CruceStockScreen({ inventario, adminId, vistaInicial = 'resumen'
     })()}
 
     {editorContexto && (
-      <EditorCorreccionTax
+      <EditorTax
         contexto={editorContexto}
         adminId={adminId}
         onCerrar={() => setEditorContexto(null)}

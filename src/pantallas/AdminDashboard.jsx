@@ -12,6 +12,7 @@ import { CruceStockScreen } from './CruceStockScreen.jsx';
 import { ActividadInventarioScreen } from './ActividadInventarioScreen.jsx';
 import { HistoricoTiendaScreen } from './HistoricoTiendaScreen.jsx';
 import { HeaderAdmin } from '../componentes/HeaderAdmin.jsx';
+import { EditorTax } from './EditorTax.jsx';
 
 export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const mostrarToast = useToast();
@@ -45,6 +46,7 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   const [clavesGeneradas, setClavesGeneradas] = useState([]);
   const [validandoTaxId, setValidandoTaxId] = useState(null);
   const [cantidadValidacion, setCantidadValidacion] = useState('');
+  const [editorContextoTax, setEditorContextoTax] = useState(null);
 
   // --- Cruce de stock (pantalla propia, ver CruceStockScreen) ---
   const [cruceVistaInicial, setCruceVistaInicial] = useState('resumen');
@@ -350,6 +352,16 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
   }
 
   async function cerrarInventario() {
+    // Si nunca se cargó un stock teórico, el backend no tiene nada contra
+    // qué exigir validación y cierra directo — hay que avisar antes de que
+    // eso pase, para que sea una decisión consciente y no un cierre "a
+    // ciegas" sin haber cruzado nada.
+    if (!inventario.stock_cargado_en) {
+      const confirmar = window.confirm(
+        'Este inventario no tiene un stock teórico cargado, así que no hay diferencias para revisar. ¿Seguro que querés cerrarlo sin verificar ni revisar diferencias?'
+      );
+      if (!confirmar) return;
+    }
     try {
       setInventario(await api.cerrarInventario(inventario.id, admin.id));
       mostrarToast('Inventario cerrado — nadie puede seguir capturando hasta que lo reabras', 'ok');
@@ -398,13 +410,27 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
     }
   }
 
-  async function reabrirTax(taxId) {
+  // "Modificar" abre directo el editor del tax (reabre solo si hace falta,
+  // adentro) en vez de solo reabrirlo y dejar al admin sin forma de tocar
+  // artículos puntuales desde acá.
+  function abrirEditorTax(p) {
+    setEditorContextoTax({
+      taxId: p.tax_id,
+      numeroTax: p.numero_tax,
+      taxNombre: p.tax_nombre,
+      nombre: p.nombre,
+      alias: p.alias,
+      estado: p.tax_estado,
+    });
+  }
+
+  async function cerrarTaxDesdeAdmin(taxId) {
     try {
-      await api.reabrirTax(taxId, { adminId: admin.id });
+      await api.cerrarTax(taxId);
       cargarResumen(inventario.id);
-      mostrarToast('Tax reabierto', 'ok');
+      mostrarToast('Tax cerrado', 'ok');
     } catch {
-      mostrarToast('No se pudo reabrir el tax', 'error');
+      mostrarToast('No se pudo cerrar el tax', 'error');
     }
   }
 
@@ -1153,18 +1179,25 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                                       <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => confirmarValidacionTax(p)}>OK</button>
                                       <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => setValidandoTaxId(null)}>✕</button>
                                     </div>
-                                  ) : p.validado_en ? (
-                                    p.cantidad_validada === p.unidades ? (
-                                      <span style={{ color: 'var(--exito)', fontWeight: 700 }}>✓ OK</span>
-                                    ) : (
-                                      <span style={{ color: '#B91C1C', fontWeight: 700 }} title="Inconsistencia">
-                                        ⚠ {p.cantidad_validada} vs {p.unidades}
-                                      </span>
-                                    )
-                                  ) : p.tax_estado === 'cerrado' ? (
-                                    <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => iniciarValidarTax(p)}>Validar</button>
                                   ) : (
-                                    '—'
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                                      {p.validado_en && (
+                                        p.cantidad_validada === p.unidades ? (
+                                          <span style={{ color: 'var(--exito)', fontWeight: 700 }}>✓ OK</span>
+                                        ) : (
+                                          <span style={{ color: '#B91C1C', fontWeight: 700 }} title="Inconsistencia">
+                                            ⚠ {p.cantidad_validada} vs {p.unidades}
+                                          </span>
+                                        )
+                                      )}
+                                      {p.tax_estado === 'cerrado' ? (
+                                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => iniciarValidarTax(p)}>
+                                          {p.validado_en ? 'Revalidar' : 'Validar'}
+                                        </button>
+                                      ) : (
+                                        !p.validado_en && '—'
+                                      )}
+                                    </div>
                                   )}
                                 </td>
                                 <td>
@@ -1172,9 +1205,11 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                                       tax puntual — hay que reabrirlo completo ("Reabrir para corregir
                                       algo") para que estas acciones vuelvan a aparecer. */}
                                   {p.tax_id && inventario.estado === 'abierto' && (
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                      {p.tax_estado === 'cerrado' && (
-                                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => reabrirTax(p.tax_id)}>Modificar</button>
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                      {p.tax_estado === 'cerrado' ? (
+                                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => abrirEditorTax(p)}>Modificar</button>
+                                      ) : (
+                                        <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => cerrarTaxDesdeAdmin(p.tax_id)}>Cerrar tax</button>
                                       )}
                                       {p.unidades > 0 && (
                                         <button className="btn-texto" style={{ padding: 0, fontSize: 12 }} onClick={() => reiniciarTaxDesdeAdmin(p.tax_id, p.unidades)}>
@@ -1211,6 +1246,15 @@ export function AdminDashboard({ admin, onSalir, onActualizarAdmin }) {
                     </>
                   )}
                 </div>
+
+                {editorContextoTax && (
+                  <EditorTax
+                    contexto={editorContextoTax}
+                    adminId={admin.id}
+                    onCerrar={() => setEditorContextoTax(null)}
+                    onCambio={() => cargarResumen(inventario.id)}
+                  />
+                )}
               </>
             )}
         </div>
